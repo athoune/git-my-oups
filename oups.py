@@ -1,9 +1,8 @@
 #! /usr/bin/env python3
-from collections.abc import Generator
-
-from subprocess import run
-from io import BytesIO
 import re
+from collections.abc import Generator
+from io import BytesIO
+from subprocess import run
 
 spaces = re.compile(rb"\s+")
 
