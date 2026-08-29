@@ -8,10 +8,13 @@ spaces = re.compile(rb"\s+")
 
 
 class Log:
-    commit = None
-    author = None
-    date = None
-    message = None
+    commit: int
+    author: bytes
+    date: bytes
+    message: bytes
+
+    def __init__(self):
+        self._buffer = BytesIO()
 
 
 def branches() -> tuple[str, list[str]]:
@@ -38,23 +41,17 @@ def parse_log(txt: bytes) -> Generator[Log, None, None]:
             continue
         if line.startswith(b"commit"):
             if l is not None:
-                l.message = l.message.getvalue()
+                l.message = l._buffer.getvalue()
                 yield l
             l = Log()
-        if l.commit is None:
+        if line.startswith(b"commit "):
             l.commit = int(line.strip().split(b" ")[1], 16)
-        elif l.author is None:
+        elif line.startswith(b"Author:"):
             l.author = line.strip().split(b" ", maxsplit=1)[1]
-        elif l.date is None:
+        elif line.startswith(b"Date:"):
             l.date = spaces.split(line.strip(), maxsplit=1)[1]
-        elif l.message is None:
-            l.message = BytesIO()
         elif line.startswith(b"    ") or line == b"":
-            l.message.write(line)
-        else:
-            l.message = l.message.getvalue()
-            yield l
-            l = Log()
+            l._buffer.write(line)
     yield l
 
 
