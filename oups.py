@@ -3,12 +3,16 @@ import datetime as dt
 import re
 from collections.abc import Generator
 from io import BytesIO
-from subprocess import CalledProcessError, run
+from subprocess import CalledProcessError, CompletedProcess, run
 
 spaces = re.compile(rb"\s+")
 
 DATE_FORMAT = "%a %b %d %H:%M:%S %Y %z"
 TEST_BRANCH_NAME = "___test-rebase"
+
+
+def git_(*args) -> CompletedProcess[bytes]:
+    return run(["git"] + list(args), check=True, capture_output=True)
 
 
 class Log:
@@ -64,26 +68,28 @@ class Project:
 
     def test_rebase(self):
         for cmd in [
-            ["git", "checkout", "-b", TEST_BRANCH_NAME],
-            ["git", "rebase", "origin/main"],
-            ["git", "checkout", self.current_branch],
-            ["git", "branch", "-D", TEST_BRANCH_NAME],
+            ["checkout", "-b", TEST_BRANCH_NAME],
+            ["rebase", "origin/main"],
+            ["checkout", self.current_branch],
+            ["branch", "-D", TEST_BRANCH_NAME],
         ]:
             try:
-                run(cmd, check=True, capture_output=True)
+                git_(*cmd)
             except CalledProcessError as e:
                 print(e.args)
                 print(e.stderr)
 
 
-def branch_all(merged=False) -> tuple[str, list[str]]:
-    proc = run(["git", "branch", "--show-current"], capture_output=True, check=True)
+def branch_all(merged=False, include: list[str] | None = None) -> tuple[str, list[str]]:
+    if include is None:
+        include: list[str] = []
+    proc = git_("branch", "--show-current")
     current = proc.stdout.strip().decode()
 
-    command = ["git", "branch", "--all"]
+    command = ["branch", "--all"]
     if not merged:
         command.append("--no-merged")
-    proc = run(command, capture_output=True, check=True)
+    proc = git_(*command)
     b = []
     for line in proc.stdout.split(b"\n"):
         line = line.strip()
@@ -127,11 +133,7 @@ def parse_log(txt: bytes) -> Generator[Log, None, None]:
 
 
 def logs(branch: str) -> Generator[Log, None, None]:
-    return parse_log(
-        run(
-            ["git", "log", "--format=fuller", branch], check=True, capture_output=True
-        ).stdout
-    )
+    return parse_log(git_("log", "--format=fuller", branch).stdout)
 
 
 if __name__ == "__main__":
