@@ -9,14 +9,17 @@ spaces = re.compile(rb"\s+")
 
 
 class Log:
-    commit: int
-    author: bytes
-    date: bytes
-    message: bytes
+    commit: bytes
+    author: str
+    author_date: bytes
+    commiter: str
+    commit_date: bytes
+    message: str
+    merge: bytes
 
     def __init__(self):
         self._buffer = BytesIO()
-        self.commit = 0
+        self.commit = b""
 
 
 class Branch:
@@ -46,15 +49,21 @@ def parse_log(txt: bytes) -> Generator[Log, None, None]:
     l = Log()
     for line in txt.split(b"\n"):
         if line.startswith(b"commit"):
-            if l.commit != 0:
-                l.message = l._buffer.getvalue()
+            if l.commit != b"":
+                l.message = l._buffer.getvalue().decode()
                 yield l
             l = Log()
-            l.commit = int(line.strip().split(b" ")[1], 16)
+            l.commit = line.strip().split(b" ")[1]
         elif line.startswith(b"Author:"):
-            l.author = line.strip().split(b" ", maxsplit=1)[1]
-        elif line.startswith(b"Date:"):
-            l.date = spaces.split(line.strip(), maxsplit=1)[1]
+            l.author = line.strip().split(b" ", maxsplit=1)[1].strip().decode()
+        elif line.startswith(b"AuthorDate:"):
+            l.author_date = spaces.split(line.strip(), maxsplit=1)[1]
+        elif line.startswith(b"Commit:"):
+            l.commiter = line.strip().split(b" ", maxsplit=1)[1].strip().decode()
+        elif line.startswith(b"CommitDate:"):
+            l.commit_date = spaces.split(line.strip(), maxsplit=1)[1]
+        elif line.startswith(b"Merge:"):
+            l.merge = line.strip().split(b" ")[1].strip()
         elif line.startswith(b"    ") or line == b"":
             l._buffer.write(line)
     yield l
@@ -63,7 +72,7 @@ def parse_log(txt: bytes) -> Generator[Log, None, None]:
 def logs(branch: str) -> Generator[Log, None, None]:
     return parse_log(
         run(
-            ["git", "log", "--decorate=short", branch], check=True, capture_output=True
+            ["git", "log", "--format=fuller", branch], check=True, capture_output=True
         ).stdout
     )
 
