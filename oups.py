@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 import datetime as dt
+import os
 import re
 from collections.abc import Generator
 from fnmatch import fnmatch
@@ -13,7 +14,14 @@ TEST_BRANCH_NAME = "___test-rebase"
 
 
 def git_(*args) -> CompletedProcess[bytes]:
-    return run(["git"] + list(args), check=True, capture_output=True)
+    if os.getenv("VERBOSE") == "1":
+        print("git", *args)
+    try:
+        proc = run(["git"] + list(args), check=True, capture_output=True)
+    except CalledProcessError as e:
+        print(f'Error running "git {" ".join(args)}\n\n{e.stderr.decode()}"\n')
+        raise
+    return proc
 
 
 class Log:
