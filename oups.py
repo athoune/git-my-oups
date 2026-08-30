@@ -7,6 +7,7 @@ from subprocess import run
 spaces = re.compile(rb"\s+")
 
 
+
 class Log:
     commit: int
     author: bytes
@@ -15,9 +16,16 @@ class Log:
 
     def __init__(self):
         self._buffer = BytesIO()
+        self.commit = 0
 
 
-def branches() -> tuple[str, list[str]]:
+class Branch:
+    name: bytes
+    current: bool
+    logs: list[Log]
+
+
+def branch_all() -> tuple[str, list[str]]:
     cmd = run(["git", "branch", "--all"], capture_output=True, check=True)
     current = ""
     b = []
@@ -35,16 +43,13 @@ def branches() -> tuple[str, list[str]]:
 
 
 def parse_log(txt: bytes) -> Generator[Log, None, None]:
-    l = None
+    l = Log()
     for line in txt.split(b"\n"):
-        if line == b"":
-            continue
         if line.startswith(b"commit"):
-            if l is not None:
+            if l.commit != 0:
                 l.message = l._buffer.getvalue()
                 yield l
             l = Log()
-        if line.startswith(b"commit "):
             l.commit = int(line.strip().split(b" ")[1], 16)
         elif line.startswith(b"Author:"):
             l.author = line.strip().split(b" ", maxsplit=1)[1]
@@ -64,7 +69,7 @@ def logs(branch: str) -> Generator[Log, None, None]:
 
 
 if __name__ == "__main__":
-    main, bb = branches()
+    main, bb = branch_all()
     for b in bb:
         print(b)
         for l in logs(b):
