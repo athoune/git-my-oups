@@ -39,6 +39,17 @@ class Branch:
         self.name = name
         self.logs = list(logs(name))
 
+    def local_checkout(self):
+        if not self.name.startswith("remotes/"):
+            raise ValueError("Cannot checkout local branch")
+        local_name = self.name.split("/", maxsplit=2)[-1]
+        if local_name in git_("branch").stdout.decode():
+            current = git_("branch", "--show-current").stdout.decode().strip()
+            git_("checkout", local_name)
+            git_("git", "pull", "--rebase")
+            git_("git", "checkout", current)
+        git_("checkout", self.name)
+
 
 class Project:
     name: str
