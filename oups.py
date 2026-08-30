@@ -2,6 +2,7 @@
 import datetime as dt
 import re
 from collections.abc import Generator
+from fnmatch import fnmatch
 from io import BytesIO
 from subprocess import CalledProcessError, CompletedProcess, run
 
@@ -92,15 +93,20 @@ def branch_all(merged=False, include: list[str] | None = None) -> tuple[str, lis
     proc = git_(*command)
     b = []
     for line in proc.stdout.split(b"\n"):
-        line = line.strip()
-        if line == b"":
+        if line.startswith(b"* "):
             continue
-        else:
-            z = line.find(b" -> ")
-            if z > 0:
-                b.append(line.decode()[:z])
-            else:
-                b.append(line.decode())
+        line = line.strip()
+        m = re.match(rb"\S+", line)
+        if m is None:
+            continue
+        branch_name = m.group(0).decode()
+        ok = False
+        for i in include:
+            if fnmatch(branch_name, i):
+                ok = True
+                break
+        if ok or include == []:
+            b.append(branch_name)
     return current, b
 
 
