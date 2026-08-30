@@ -1,19 +1,20 @@
 #! /usr/bin/env python3
 import re
 from collections.abc import Generator
+from datetime import datetime
 from io import BytesIO
 from subprocess import run
 
 spaces = re.compile(rb"\s+")
 
-
+DATE_FORMAT = "%a %b %d %H:%M:%S %Y %z"
 
 class Log:
     commit: bytes
     author: str
-    author_date: bytes
+    author_date: datetime
     commiter: str
-    commit_date: bytes
+    commit_date: datetime
     message: str
     merge: bytes
 
@@ -72,11 +73,11 @@ def parse_log(txt: bytes) -> Generator[Log, None, None]:
         elif line.startswith(b"Author:"):
             l.author = line.strip().split(b" ", maxsplit=1)[1].strip().decode()
         elif line.startswith(b"AuthorDate:"):
-            l.author_date = spaces.split(line.strip(), maxsplit=1)[1]
+            l.author_date = datetime.strptime(spaces.split(line.strip(), maxsplit=1)[1].decode(), DATE_FORMAT).astimezone()
         elif line.startswith(b"Commit:"):
             l.commiter = line.strip().split(b" ", maxsplit=1)[1].strip().decode()
         elif line.startswith(b"CommitDate:"):
-            l.commit_date = spaces.split(line.strip(), maxsplit=1)[1]
+            l.commit_date = datetime.strptime(spaces.split(line.strip(), maxsplit=1)[1].decode(), DATE_FORMAT).astimezone()
         elif line.startswith(b"Merge:"):
             l.merge = line.strip().split(b" ")[1].strip()
         elif line.startswith(b"    ") or line == b"":

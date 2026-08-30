@@ -1,3 +1,5 @@
+import datetime as dt
+
 from oups import parse_log
 
 
@@ -29,7 +31,8 @@ CommitDate: Tue Aug 18 04:39:45 2026 +0100
     print(logs[0].commit)
     assert logs[0].commit.startswith(b"8291660ced043512988c507c4f342eeffd9cb9f7")
     assert logs[0].author.startswith("Subham Kundu")
-    assert logs[0].author_date == b"Tue Aug 18 01:52:48 2026 -0700"
+    assert logs[0].author_date == dt.datetime(2026, 8, 18, hour=1, minute=52, second=48, tzinfo=dt.timezone(-dt.timedelta(hours=7)))
     assert logs[0].commiter.startswith("GitHub")
-    assert logs[0].commit_date == b"Tue Aug 18 01:52:48 2026 -0700"
+
     assert logs[1].commit == b"7f0ab16ffe45846b4bfc7384a362365d94b7bcdb"
+    assert logs[1].commit_date ==  dt.datetime(2026, 8, 18, hour=4, minute=39, second=45, tzinfo=dt.timezone(dt.timedelta(hours=1)))
