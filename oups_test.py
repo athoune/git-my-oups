@@ -40,7 +40,7 @@ CommitDate: Tue Aug 18 04:39:45 2026 +0100
         second=48,
         tzinfo=dt.timezone(-dt.timedelta(hours=7)),
     )
-    assert logs[0].commiter.startswith("GitHub")
+    assert logs[0].committer.startswith("GitHub")
 
     assert logs[1].commit == b"7f0ab16ffe45846b4bfc7384a362365d94b7bcdb"
     assert logs[1].commit_date == dt.datetime(

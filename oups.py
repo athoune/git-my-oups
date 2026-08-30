@@ -28,7 +28,7 @@ class Log:
     commit: bytes
     author: str
     author_date: dt.datetime
-    commiter: str
+    committer: str
     commit_date: dt.datetime
     message: str
     merge: bytes
@@ -145,7 +145,7 @@ def parse_log(txt: bytes) -> Generator[Log, None, None]:
                 spaces.split(line.strip(), maxsplit=1)[1].decode(), DATE_FORMAT
             ).astimezone()
         elif line.startswith(b"Commit:"):
-            l.commiter = line.strip().split(b" ", maxsplit=1)[1].strip().decode()
+            l.committer = line.strip().split(b" ", maxsplit=1)[1].strip().decode()
         elif line.startswith(b"CommitDate:"):
             l.commit_date = dt.datetime.strptime(
                 spaces.split(line.strip(), maxsplit=1)[1].decode(), DATE_FORMAT
