@@ -23,9 +23,24 @@ class Log:
 
 
 class Branch:
-    name: bytes
+    name: str
     current: bool
     logs: list[Log]
+
+    def __init__(self, name):
+        self.name = name
+        self.logs = list(logs(name))
+
+class Project:
+    name: str
+    current_branch: str
+    branches: dict[str, Branch]
+
+    def __init__(self): # only works in the current directory
+        self.current_branch, branches = branch_all()
+        self.branches = {}
+        for branch in branches:
+            self.branches[branch] = Branch(branch)
 
 
 def branch_all() -> tuple[str, list[str]]:
@@ -78,8 +93,9 @@ def logs(branch: str) -> Generator[Log, None, None]:
 
 
 if __name__ == "__main__":
+    project = Project()
     main, bb = branch_all()
-    for b in bb:
-        print(b)
-        for l in logs(b):
-            print("\t", l.commit)
+    for branch in project.branches.values():
+        print(branch.name)
+        for log in branch.logs:
+            print("\t", log.commit)
