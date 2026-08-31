@@ -106,12 +106,7 @@ class Branch:
             local_name = self.name.split("/", maxsplit=2)[-1]
         else:
             local_name = self.local_checkout()
-        merge_base = (
-            self.project.git("merge-base", local_name, self.name, error=False)
-            .stdout.strip()
-            .decode()
-        )
-        self.project.git("merge-tree", merge_base, local_name, self.name)
+        self.project.git("merge-tree", "--write-tree", local_name, self.name)
 
     def last_commit_date(self) -> dt.datetime:
         return dt.datetime.strptime(
