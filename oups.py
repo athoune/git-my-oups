@@ -177,8 +177,23 @@ class Project:
                 branch.try_to_merge_with_main()
             except CalledProcessError as e:
                 print(
-                    f" 🔥\n\nError occurred while merging branch {branch.name}:\n {e.stderr.decode()}\n"
+                    f""" 🔥
+
+Error occurred while merging branch {branch.name}:"""
                 )
+                stdout = e.stdout.decode()
+                if stdout:
+                    print(f"""
+STDOUT:
+
+    {stdout}
+
+""")
+                print(f"""
+STDERR:
+
+    {e.stderr.decode()}
+""")
             else:
                 print(" ✅")
 
