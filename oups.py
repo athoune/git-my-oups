@@ -3,6 +3,7 @@ import argparse
 import datetime as dt
 import os
 import re
+import sys
 from collections.abc import Generator
 from fnmatch import fnmatch
 from io import BytesIO
@@ -31,7 +32,9 @@ class Git:
             )
         except CalledProcessError as e:
             if error:
-                print(f'Error running "git {" ".join(args)}\n\n{e.stderr.decode()}"\n')
+                sys.stderr.write(
+                    f'Error running "git {" ".join(args)}\n\n{e.stderr.decode()}"\n'
+                )
             raise
         return proc
 
