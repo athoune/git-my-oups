@@ -1,4 +1,5 @@
 #! /usr/bin/env python3
+import argparse
 import datetime as dt
 import os
 import re
@@ -17,7 +18,7 @@ class Git:
     def __init__(self, repo_path: str):
         self.repo_path = repo_path
 
-    def __call__(self, *args) -> CompletedProcess[bytes]:
+    def __call__(self, *args, error=False) -> CompletedProcess[bytes]:
         if os.getenv("VERBOSE") == "1":
             print("git", *args)
         try:
@@ -28,7 +29,8 @@ class Git:
                 cwd=self.repo_path,
             )
         except CalledProcessError as e:
-            print(f'Error running "git {" ".join(args)}\n\n{e.stderr.decode()}"\n')
+            if error:
+                print(f'Error running "git {" ".join(args)}\n\n{e.stderr.decode()}"\n')
             raise
         return proc
 
@@ -229,6 +231,10 @@ def logs(git: Git | None = None, branch: str = "HEAD") -> Generator[Log, None, N
 if __name__ == "__main__":
     git = Git(os.getcwd())
     project = Project(git)
+    parser = argparse.ArgumentParser(
+        prog="oups.py", description="Avoid git merge conflicts and other dramas"
+    )
+
     # project.test_rebase()
     for branch in project.fresh_branches(include="remotes/origin/*"):
         print("Branch name:", branch.name)
