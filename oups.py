@@ -60,8 +60,14 @@ class Log:
     merge: bytes
 
     def __init__(self):
-        self._buffer = BytesIO()
+        self.__buffer = BytesIO()
         self.commit = b""
+
+    def write_message(self, line: bytes):
+        self.__buffer.write(line)
+
+    def read_message(self) -> str:
+        return self.__buffer.getvalue().decode()
 
 
 class Branch:
@@ -76,7 +82,7 @@ class Branch:
         self._logs = []
 
     def logs(self) -> list[Log]:
-        if self._logs == []:
+        if not self._logs:
             self._logs = list(logs(self.project.git, self.name))
         return self._logs
 
@@ -85,7 +91,7 @@ class Branch:
             raise ValueError("Cannot checkout local branch")
         local_name = self.name.split("/", maxsplit=2)[-1]
         current = self.project.git("branch", "--show-current").stdout.decode().strip()
-        _, branches = branch_all(merged=True, all=False)
+        _, branches = branch_all(merged=True, all_branches=False)
         if local_name in branches:
             self.project.git("checkout", local_name)
             self.project.git("pull", "--rebase")
@@ -130,7 +136,7 @@ class Project:
 
     @property
     def branches(self) -> dict[str, Branch]:
-        if self.__branches == {}:
+        if not self.__branches:
             for name in self.__branches_name:
                 self.__branches[name] = Branch(name, self)
         return self.__branches
@@ -183,7 +189,10 @@ class Project:
 
 
 def branch_all(
-    git: Git | None = None, merged=False, all=True, include: list[str] | None = None
+    git: Git | None = None,
+    merged=False,
+    all_branches=True,
+    include: list[str] | None = None,
 ) -> tuple[str, list[str]]:
     if git is None:
         git = Git(os.getcwd())
@@ -191,7 +200,7 @@ def branch_all(
     current = proc.stdout.strip().decode()
 
     command = ["branch"]
-    if all:
+    if all_branches:
         command.append("--all")
     if not merged:
         command.append("--no-merged")
@@ -211,31 +220,31 @@ def branch_all(
 
 
 def parse_log(txt: bytes) -> Generator[Log, None, None]:
-    l = Log()
+    log = Log()
     for line in txt.split(b"\n"):
         if line.startswith(b"commit"):
-            if l.commit != b"":
-                l.message = l._buffer.getvalue().decode()
-                yield l
-            l = Log()
-            l.commit = line.strip().split(b" ")[1]
+            if log.commit != b"":
+                log.message = log.read_message()
+                yield log
+            log = Log()
+            log.commit = line.strip().split(b" ")[1]
         elif line.startswith(b"Author:"):
-            l.author = line.strip().split(b" ", maxsplit=1)[1].strip().decode()
+            log.author = line.strip().split(b" ", maxsplit=1)[1].strip().decode()
         elif line.startswith(b"AuthorDate:"):
-            l.author_date = dt.datetime.strptime(
+            log.author_date = dt.datetime.strptime(
                 spaces.split(line.strip(), maxsplit=1)[1].decode(), DATE_FORMAT
             ).astimezone()
         elif line.startswith(b"Commit:"):
-            l.committer = line.strip().split(b" ", maxsplit=1)[1].strip().decode()
+            log.committer = line.strip().split(b" ", maxsplit=1)[1].strip().decode()
         elif line.startswith(b"CommitDate:"):
-            l.commit_date = dt.datetime.strptime(
+            log.commit_date = dt.datetime.strptime(
                 spaces.split(line.strip(), maxsplit=1)[1].decode(), DATE_FORMAT
             ).astimezone()
         elif line.startswith(b"Merge:"):
-            l.merge = line.strip().split(b" ")[1].strip()
+            log.merge = line.strip().split(b" ")[1].strip()
         elif line.startswith(b"    ") or line == b"":
-            l._buffer.write(line)
-    yield l
+            log.write_message(line)
+    yield log
 
 
 def logs(git: Git | None = None, branch: str = "HEAD") -> Generator[Log, None, None]:
