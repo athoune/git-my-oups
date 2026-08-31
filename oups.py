@@ -13,15 +13,36 @@ DATE_FORMAT = r"%a %b %d %H:%M:%S %Y %z"
 TEST_BRANCH_NAME = "___test-rebase"
 
 
-def git_(*args) -> CompletedProcess[bytes]:
-    if os.getenv("VERBOSE") == "1":
-        print("git", *args)
-    try:
-        proc = run(["git"] + list(args), check=True, capture_output=True)
-    except CalledProcessError as e:
-        print(f'Error running "git {" ".join(args)}\n\n{e.stderr.decode()}"\n')
-        raise
-    return proc
+class Git:
+    def __init__(self, repo_path: str):
+        self.repo_path = repo_path
+
+    def __call__(self, *args) -> CompletedProcess[bytes]:
+        if os.getenv("VERBOSE") == "1":
+            print("git", *args)
+        try:
+            proc = run(
+                ["git"] + list(args),
+                check=True,
+                capture_output=True,
+                cwd=self.repo_path,
+            )
+        except CalledProcessError as e:
+            print(f'Error running "git {" ".join(args)}\n\n{e.stderr.decode()}"\n')
+            raise
+        return proc
+
+    @property
+    def config(self) -> dict[str, str | bool]:
+        proc = self("config", "list")
+        c = {}
+        for line in proc.stdout.decode().split("\n"):
+            k, v = line.split("=", maxsplit=1)[1].strip()
+            if v.lower() in ("true", "false"):
+                c[k] = v.lower() == "true"
+            else:
+                c[k] = v
+        return c
 
 
 class Log:
@@ -42,42 +63,48 @@ class Branch:
     name: str
     current: bool
     _logs: list[Log]
+    project: "Project"
 
-    def __init__(self, name):
+    def __init__(self, name: str, project: "Project"):
         self.name = name
+        self.project = project
         self._logs = []
 
     def logs(self) -> list[Log]:
         if self._logs == []:
-            self._logs = list(logs(self.name))
+            self._logs = list(logs(self.project.git, self.name))
         return self._logs
 
     def local_checkout(self) -> str:
         if not self.name.startswith("remotes/"):
             raise ValueError("Cannot checkout local branch")
         local_name = self.name.split("/", maxsplit=2)[-1]
-        current = git_("branch", "--show-current").stdout.decode().strip()
+        current = self.project.git("branch", "--show-current").stdout.decode().strip()
         _, branches = branch_all(merged=True, all=False)
         if local_name in branches:
-            git_("checkout", local_name)
-            git_("pull", "--rebase")
+            self.project.git("checkout", local_name)
+            self.project.git("pull", "--rebase")
         else:
-            git_("checkout", "--track", self.name)
-        git_("checkout", current)
+            self.project.git("checkout", "--track", self.name)
+        self.project.git("checkout", current)
         return local_name
 
     def try_to_merge_with_main(self):
-        git_("fetch")
+        self.project.git("fetch")
         if self.name == "remotes/origin/main":
             local_name = self.name.split("/", maxsplit=2)[-1]
         else:
             local_name = self.local_checkout()
-        merge_base = git_("merge-base", local_name, self.name).stdout.strip().decode()
-        git_("merge-tree", merge_base, local_name, self.name)
+        merge_base = (
+            self.project.git("merge-base", local_name, self.name)
+            .stdout.strip()
+            .decode()
+        )
+        self.project.git("merge-tree", merge_base, local_name, self.name)
 
     def last_commit_date(self) -> dt.datetime:
         return dt.datetime.strptime(
-            git_("log", "-1", "--pretty=format:'%ci'", self.name)
+            self.project.git("log", "-1", "--pretty=format:'%ci'", self.name)
             .stdout.strip()
             .decode(),
             DATE_FORMAT,
@@ -89,16 +116,18 @@ class Project:
     current_branch: str
     __branches: dict[str, Branch]
     __branches_name: list[str]
+    git: Git
 
-    def __init__(self, merged=False):  # only works in the current directory
-        self.current_branch, self.__branches_name = branch_all(merged)
+    def __init__(self, git: Git, merged=False):  # only works in the current directory
+        self.git = git
+        self.current_branch, self.__branches_name = branch_all(self.git, merged)
         self.__branches = {}
 
     @property
     def branches(self) -> dict[str, Branch]:
         if self.__branches == {}:
             for name in self.__branches_name:
-                self.__branches[name] = Branch(name)
+                self.__branches[name] = Branch(name, self)
         return self.__branches
 
     def fresh_branches(
@@ -112,11 +141,13 @@ class Project:
             if name == "remotes/origin/HEAD":
                 continue
             branch_date = dt.datetime.strptime(
-                git_("log", "-1", r"--pretty=format:%ci", name).stdout.strip().decode(),
+                self.git("log", "-1", r"--pretty=format:%ci", name)
+                .stdout.strip()
+                .decode(),
                 r"%Y-%m-%d %H:%M:%S %z",
             ).astimezone()
             if now - branch_date < delta:
-                fresh.append(Branch(name))
+                fresh.append(Branch(name, self))
         return fresh
 
     def test_rebase_with_remote_main(self):
@@ -127,16 +158,18 @@ class Project:
             ["branch", "-D", TEST_BRANCH_NAME],
         ]:
             try:
-                git_(*cmd)
+                self.git(*cmd)
             except CalledProcessError as e:
                 print(e.args)
                 print(e.stderr)
 
 
 def branch_all(
-    merged=False, all=True, include: list[str] | None = None
+    git: Git | None = None, merged=False, all=True, include: list[str] | None = None
 ) -> tuple[str, list[str]]:
-    proc = git_("branch", "--show-current")
+    if git is None:
+        git = Git(os.getcwd())
+    proc = git("branch", "--show-current")
     current = proc.stdout.strip().decode()
 
     command = ["branch"]
@@ -144,7 +177,7 @@ def branch_all(
         command.append("--all")
     if not merged:
         command.append("--no-merged")
-    proc = git_(*command)
+    proc = git(*command)
     b = []
     for line in proc.stdout.split(b"\n"):
         if line.startswith(b"* "):
@@ -187,16 +220,19 @@ def parse_log(txt: bytes) -> Generator[Log, None, None]:
     yield l
 
 
-def logs(branch: str) -> Generator[Log, None, None]:
-    return parse_log(git_("log", "--format=fuller", branch).stdout)
+def logs(git: Git | None = None, branch: str = "HEAD") -> Generator[Log, None, None]:
+    if git is None:
+        git = Git(os.getcwd())
+    return parse_log(git("log", "--format=fuller", branch).stdout)
 
 
 if __name__ == "__main__":
-    project = Project()
+    git = Git(os.getcwd())
+    project = Project(git)
     # project.test_rebase()
     for branch in project.fresh_branches(include="remotes/origin/*"):
         print("Branch name:", branch.name)
         try:
             branch.try_to_merge_with_main()
-        except Exception as e:
+        except CalledProcessError as e:
             print(f"Error occurred while merging branch {branch.name}: {e}")
