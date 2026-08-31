@@ -6,24 +6,16 @@ as a subprocess and asserts on its output.
 
 Note: oups.py always exits 0 (the remote-main handler catches per-branch
 conflicts itself). The conflict signal is the "🔥" marker followed by
-"Error occurred while merging branch ..." on stdout.
+"Error occurred while merging branch ..." on stdout; the details are
+surfaced in a "STDOUT:" / "STDERR:" block (merge-tree --write-tree prints
+its conflict info on stdout, pull --rebase on stderr).
 """
 
 import pytest
 
 from conftest import git, run_oups, write_and_commit
 
-# Known oups.py bugs surfaced by these tests (see the report):
-# - BUG A: Branch.local_checkout() calls branch_all(merged=True, all=False)
-#   without the project Git, so the local-branch scan runs in os.getcwd()
-#   instead of the repo → "fatal: a branch named '...' already exists".
-# - BUG B: try_to_merge_with_main() uses the deprecated 3-arg
-#   "git merge-tree <base> <b1> <b2>" form, which exits 0 even on conflicts
-#   (only "merge-tree --write-tree" exits 1) → conflicts are never detected
-#   in the remotes/origin/main path.
 
-
-@pytest.mark.xfail(reason="BUG A: local_checkout() scans branches in os.getcwd() instead of the repo (--path)", strict=False)
 def test_clean_feature_branch(repo):
     """A feature branch that merges cleanly is reported with ✅ and exit 0."""
     git(repo, "checkout", "-q", "-b", "feature")
@@ -61,9 +53,10 @@ def test_conflicting_feature_branch(repo, pusher):
     assert proc.returncode == 0
     assert "# remotes/origin/feature 🔥" in proc.stdout
     assert "Error occurred while merging branch remotes/origin/feature" in proc.stdout
+    # pull --rebase reports the rebase failure on stderr
+    assert "STDERR:" in proc.stdout
 
 
-@pytest.mark.xfail(reason="BUG A: local_checkout() scans branches in os.getcwd() instead of the repo (--path)", strict=False)
 def test_fresh_branches_filters_stale_branches(repo):
     """Branches whose last commit predates the freshness delta are skipped."""
     git(repo, "checkout", "-q", "-b", "fresh")
@@ -126,7 +119,6 @@ def test_default_path_is_current_directory(repo):
     assert "# remotes/origin/feature ✅" in proc.stdout
 
 
-@pytest.mark.xfail(reason="BUG B: 3-arg merge-tree exits 0 on conflicts; --write-tree is required", strict=False)
 def test_stale_local_main_conflicts_with_origin_main(repo, pusher):
     """Stale local main vs advanced origin/main with divergent edits → 🔥."""
     # local work on main, never pushed
@@ -142,3 +134,6 @@ def test_stale_local_main_conflicts_with_origin_main(repo, pusher):
     assert proc.returncode == 0
     assert "# remotes/origin/main 🔥" in proc.stdout
     assert "Error occurred while merging branch remotes/origin/main" in proc.stdout
+    # merge-tree --write-tree prints its conflict info on stdout (stderr is empty)
+    assert "STDOUT:" in proc.stdout
+    assert "CONFLICT" in proc.stdout
