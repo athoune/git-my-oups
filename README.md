@@ -1,6 +1,6 @@
 # Git my oups
 
-No more merge conflict again, ever.
+No more merge conflicts, ever.
 
 `oups.py` is a single file, with no dependencies.
 `git` must be available in your PATH.
