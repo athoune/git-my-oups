@@ -112,7 +112,7 @@ class Branch:
 
     def try_to_merge_with_main(self):
         self.project.git("fetch")
-        if self.name == "remotes/origin/main":
+        if fnmatch(self.name, "remotes/*/main"):
             local_name = self.name.split("/", maxsplit=2)[-1]
         else:
             local_name = self.local_checkout()
@@ -149,7 +149,7 @@ class Project:
         for name in self.__branches_name:
             if include is not None and not fnmatch(name, include):
                 continue
-            if name == "remotes/origin/HEAD":
+            if fnmatch(name, "remotes/*/HEAD"):
                 continue
             branch_date = self.git.last_commit_date(name)
             if now - branch_date < delta:
@@ -169,7 +169,7 @@ class Project:
                 print(e.args)
                 print(e.stderr)
 
-    def remote_main(self, include="remotes/origin/*"):
+    def remote_main(self, include="remotes/*/*"):
         """Try to merge every fresh remote branch with main and report conflicts."""
         for branch in self.fresh_branches(include=include):
             print("#", branch.name, end="")
