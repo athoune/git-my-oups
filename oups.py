@@ -98,7 +98,7 @@ class Project:
     def branches(self) -> dict[str, Branch]:
         if self.__branches == {}:
             for name in self.__branches_name:
-                self.branches[name] = Branch(name)
+                self.__branches[name] = Branch(name)
         return self.__branches
 
     def fresh_branches(
