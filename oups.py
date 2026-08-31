@@ -101,7 +101,7 @@ class Branch:
         else:
             local_name = self.local_checkout()
         merge_base = (
-            self.project.git("merge-base", local_name, self.name)
+            self.project.git("merge-base", local_name, self.name, error=False)
             .stdout.strip()
             .decode()
         )
@@ -168,6 +168,19 @@ class Project:
                 print(e.args)
                 print(e.stderr)
 
+    def remote_main(self, include="remotes/origin/*"):
+        """Try to merge every fresh remote branch with main and report conflicts."""
+        for branch in self.fresh_branches(include=include):
+            print("#", branch.name, end="")
+            try:
+                branch.try_to_merge_with_main()
+            except CalledProcessError as e:
+                print(
+                    f" 🔥\n\nError occurred while merging branch {branch.name}:\n {e.stderr.decode()}\n"
+                )
+            else:
+                print(" ✅")
+
 
 def branch_all(
     git: Git | None = None, merged=False, all=True, include: list[str] | None = None
@@ -231,17 +244,30 @@ def logs(git: Git | None = None, branch: str = "HEAD") -> Generator[Log, None, N
     return parse_log(git("log", "--format=fuller", branch).stdout)
 
 
-if __name__ == "__main__":
-    git = Git(os.getcwd())
-    project = Project(git)
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="oups.py", description="Avoid git merge conflicts and other dramas"
     )
+    parser.add_argument(
+        "--path", type=str, default=os.getcwd(), help="Path to the git repository"
+    )
+    subparsers = parser.add_subparsers(
+        title="subcommands", help="operations", dest="command", required=True
+    )
+    subparsers.add_parser(
+        "remote-main",
+        help="Test if all active remote branches can be rebased with remote main",
+    )
 
-    # project.test_rebase()
-    for branch in project.fresh_branches(include="remotes/origin/*"):
-        print("Branch name:", branch.name)
-        try:
-            branch.try_to_merge_with_main()
-        except CalledProcessError as e:
-            print(f"Error occurred while merging branch {branch.name}: {e}")
+    args = parser.parse_args(argv)
+    git = Git(args.path)
+    project = Project(git)
+
+    if args.command == "remote-main":
+        project.remote_main()
+    else:  # unreachable: required=True makes argparse exit on missing/unknown command
+        parser.error(f"unknown command: {args.command}")
+
+
+if __name__ == "__main__":
+    main()
