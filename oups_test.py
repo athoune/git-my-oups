@@ -1,6 +1,7 @@
 import datetime as dt
+import os
 
-from oups import Project, branch_all, parse_log
+from oups import Git, Project, branch_all, parse_log
 
 
 def test_parse():
@@ -60,5 +61,5 @@ def test_branch_all():
 
 
 def test_project():
-    project = Project()
+    project = Project(Git(os.getcwd()))
     assert project.current_branch == "main"
