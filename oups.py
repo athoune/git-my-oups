@@ -39,7 +39,10 @@ class Git:
         proc = self("config", "list")
         c = {}
         for line in proc.stdout.decode().split("\n"):
-            k, v = line.split("=", maxsplit=1)[1].strip()
+            if "=" not in line:
+                continue
+            k, v = line.split("=", maxsplit=1)
+            k, v = k.strip(), v.strip()
             if v.lower() in ("true", "false"):
                 c[k] = v.lower() == "true"
             else:
