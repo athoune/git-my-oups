@@ -9,7 +9,7 @@ from subprocess import CalledProcessError, CompletedProcess, run
 
 spaces = re.compile(rb"\s+")
 
-DATE_FORMAT = "%a %b %d %H:%M:%S %Y %z"
+DATE_FORMAT = r"%a %b %d %H:%M:%S %Y %z"
 TEST_BRANCH_NAME = "___test-rebase"
 
 
