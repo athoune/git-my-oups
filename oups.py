@@ -169,13 +169,15 @@ class Project:
                 print(e.args)
                 print(e.stderr)
 
-    def remote_main(self, include="remotes/*/*"):
+    def remote_main(self, include="remotes/*/*") -> bool:
         """Try to merge every fresh remote branch with main and report conflicts."""
+        ok = True
         for branch in self.fresh_branches(include=include):
             print("#", branch.name, end="")
             try:
                 branch.try_to_merge_with_main()
             except CalledProcessError as e:
+                ok = False
                 print(
                     f""" 🔥
 
@@ -198,6 +200,7 @@ STDERR:
 """)
             else:
                 print(" ✅")
+        return ok
 
 
 def branch_all(
@@ -285,7 +288,8 @@ def main(argv: list[str] | None = None) -> None:
     project = Project(git)
 
     if args.command == "remote-main":
-        project.remote_main()
+        if not project.remote_main():
+            sys.exit(1)
     else:  # unreachable: required=True makes argparse exit on missing/unknown command
         parser.error(f"unknown command: {args.command}")
 
