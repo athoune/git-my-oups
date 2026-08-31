@@ -28,7 +28,7 @@ class Git:
                 check=True,
                 capture_output=True,
                 cwd=self.repo_path,
-                env={"LC_ALL": "C"},
+                env={**os.environ, "LC_ALL": "C"},
             )
         except CalledProcessError as e:
             if error:
