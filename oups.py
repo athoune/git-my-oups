@@ -189,10 +189,12 @@ STDOUT:
     {stdout}
 
 """)
-                print(f"""
+                stderr = e.stderr.decode()
+                if stderr:
+                    print(f"""
 STDERR:
 
-    {e.stderr.decode()}
+    {stderr}
 """)
             else:
                 print(" ✅")
