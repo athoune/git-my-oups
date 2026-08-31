@@ -91,7 +91,7 @@ class Branch:
             raise ValueError("Cannot checkout local branch")
         local_name = self.name.split("/", maxsplit=2)[-1]
         current = self.project.git("branch", "--show-current").stdout.decode().strip()
-        _, branches = branch_all(merged=True, all_branches=False)
+        _, branches = branch_all(self.project.git, merged=True, all_branches=False)
         if local_name in branches:
             self.project.git("checkout", local_name)
             self.project.git("pull", "--rebase")
