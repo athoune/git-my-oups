@@ -35,6 +35,12 @@ class Git:
             raise
         return proc
 
+    def last_commit_date(self, branch: str) -> dt.datetime:
+        return dt.datetime.strptime(
+            self("log", "-1", r"--pretty=format:%ci", branch).stdout.strip().decode(),
+            r"%Y-%m-%d %H:%M:%S %z",
+        ).astimezone()
+
     @property
     def config(self) -> dict[str, str | bool]:
         proc = self("config", "list")
@@ -110,12 +116,7 @@ class Branch:
         self.project.git("merge-tree", "--write-tree", local_name, self.name)
 
     def last_commit_date(self) -> dt.datetime:
-        return dt.datetime.strptime(
-            self.project.git("log", "-1", "--pretty=format:'%ci'", self.name)
-            .stdout.strip()
-            .decode(),
-            DATE_FORMAT,
-        ).astimezone()
+        return self.project.git.last_commit_date(self.name)
 
 
 class Project:
@@ -147,12 +148,7 @@ class Project:
                 continue
             if name == "remotes/origin/HEAD":
                 continue
-            branch_date = dt.datetime.strptime(
-                self.git("log", "-1", r"--pretty=format:%ci", name)
-                .stdout.strip()
-                .decode(),
-                r"%Y-%m-%d %H:%M:%S %z",
-            ).astimezone()
+            branch_date = self.git.last_commit_date(name)
             if now - branch_date < delta:
                 fresh.append(Branch(name, self))
         return fresh
