@@ -1,8 +1,8 @@
 # Git my oups
 
-Never more merge conflict again
+No more merge conflict again, ever.
 
-`oups.py` is one large file, without any dependencies.
-`git` must be somewhere in your PATH.
+`oups.py` is a single file, with no dependencies.
+`git` must be available in your PATH.
 
-Put this file where you need it, and voila, you can check the sanity of any git repo.
+Drop the script anywhere, run it against any repo and check the sanity of your branch.
