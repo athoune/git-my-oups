@@ -96,8 +96,16 @@ class Branch:
             self._logs = list(logs(self.project.git, self.name))
         return self._logs
 
+    def is_remote(self) -> bool:
+        return self.name.startswith("remotes/")
+
+    def remote(self) -> str:
+        if self.is_remote():
+            raise ValueError("Already a remote branch")
+        self.project.git.config[f"branch.{self.name}.remote"]
+
     def local_checkout(self) -> str:
-        if not self.name.startswith("remotes/"):
+        if not self.is_remote():
             raise ValueError("Cannot checkout local branch")
         local_name = self.name.split("/", maxsplit=2)[-1]
         current = self.project.git("branch", "--show-current").stdout.decode().strip()
@@ -140,6 +148,16 @@ class Project:
             for name in self.__branches_name:
                 self.__branches[name] = Branch(name, self)
         return self.__branches
+
+    @property
+    def remotes(self) -> dict[str, str]:
+        r = {}
+        for k, v in self.git.config.items():
+            if k.startswith("remote"):
+                _, name, key = k.split(".", 3)
+                if key == "url":
+                    r[name] = v
+        return r
 
     def fresh_branches(
         self, delta: dt.timedelta = dt.timedelta(days=30), include=None
