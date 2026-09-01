@@ -4,11 +4,12 @@ Each test builds a real git repository with a bare "origin" remote in a
 temporary directory, then runs `python oups.py --path <repo> remote-main`
 as a subprocess and asserts on its output.
 
-Note: oups.py always exits 0 (the remote-main handler catches per-branch
-conflicts itself). The conflict signal is the "🔥" marker followed by
-"Error occurred while merging branch ..." on stdout; the details are
-surfaced in a "STDOUT:" / "STDERR:" block (merge-tree --write-tree prints
-its conflict info on stdout, pull --rebase on stderr).
+Note: oups.py exits 0 when every branch merges cleanly, 1 when at least one
+conflict is found (the remote-main handler catches per-branch conflicts
+itself), and 2 on CLI errors (argparse). The conflict signal is the "🔥"
+marker followed by "Error occurred while merging branch ..." on stdout; the
+details are surfaced in a "STDOUT:" / "STDERR:" block (merge-tree
+--write-tree prints its conflict info on stdout, pull --rebase on stderr).
 """
 
 import pytest
@@ -50,7 +51,7 @@ def test_conflicting_feature_branch(repo, pusher):
 
     proc = run_oups("remote-main", repo_path=repo)
 
-    assert proc.returncode == 0
+    assert proc.returncode == 1
     assert "# remotes/origin/feature 🔥" in proc.stdout
     assert "Error occurred while merging branch remotes/origin/feature" in proc.stdout
     # pull --rebase reports the rebase failure on stderr
@@ -131,7 +132,7 @@ def test_stale_local_main_conflicts_with_origin_main(repo, pusher):
 
     proc = run_oups("remote-main", repo_path=repo)
 
-    assert proc.returncode == 0
+    assert proc.returncode == 1
     assert "# remotes/origin/main 🔥" in proc.stdout
     assert "Error occurred while merging branch remotes/origin/main" in proc.stdout
     # merge-tree --write-tree prints its conflict info on stdout (stderr is empty)
