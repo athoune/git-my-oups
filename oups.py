@@ -15,6 +15,10 @@ DATE_FORMAT = r"%a %b %d %H:%M:%S %Y %z"
 TEST_BRANCH_NAME = "___test-rebase"
 
 
+class ParsingException(Exception):
+    pass
+
+
 class Git:
     def __init__(self, repo_path: str):
         self.repo_path = repo_path
@@ -158,6 +162,16 @@ class Project:
                 if key == "url":
                     r[name] = v
         return r
+
+    def behind(self) -> int:
+        self.git("fetch")
+        self.git("checkout", self.name)
+        status = self.git("status", "-sb")
+        self.git("checkout", self.current_branch)
+        m = re.match(rb"\[behind (\d+)\]", status.stdout)
+        if m is None:
+            raise ParsingException(f"Can't find 'behind' value in '{status.stdout}'")
+        return int(m.group(1))
 
     def fresh_branches(
         self, delta: dt.timedelta = dt.timedelta(days=30), include=None
