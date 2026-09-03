@@ -172,6 +172,15 @@ class Project:
                     r[name] = v
         return r
 
+    def branches_contains(self, commit: bytes) -> list[Branch]:
+        return [
+            Branch(b.lstrip(b"*").strip().decode(), self)
+            for b in self.git("branch", "--contains", commit.decode()).stdout.split(
+                b"\n"
+            )
+            if b != b""
+        ]
+
     def behind(self) -> int:
         self.git("fetch")
         self.git("checkout", self.name)
