@@ -19,6 +19,10 @@ class ParsingException(Exception):
     pass
 
 
+class GitError(CalledProcessError):
+    pass
+
+
 class Git:
     def __init__(self, repo_path: str):
         self.repo_path = repo_path
@@ -39,7 +43,7 @@ class Git:
                 sys.stderr.write(
                     f'Error running "git {" ".join(args)}\n\n{e.stderr.decode()}"\n'
                 )
-            raise
+            raise GitError(e.returncode, e.cmd, e.output, e.stderr)
         return proc
 
     def last_commit_date(self, branch: str) -> dt.datetime:
