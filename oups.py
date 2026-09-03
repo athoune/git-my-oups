@@ -46,9 +46,14 @@ class Git:
             raise GitError(e.returncode, e.cmd, e.output, e.stderr)
         return proc
 
-    def last_commit_date(self, branch: str) -> dt.datetime:
-        return dt.datetime.strptime(
-            self("log", "-1", r"--pretty=format:%ci", branch).stdout.strip().decode(),
+    def last_commit(self, branch: str) -> tuple[bytes, dt.datetime]:
+        hash, date = (
+            self("log", "-1", r"--pretty=format:%H %ci", branch)
+            .stdout.strip()
+            .split(b" ", maxsplit=1)
+        )
+        return hash, dt.datetime.strptime(
+            date.decode(),
             r"%Y-%m-%d %H:%M:%S %z",
         ).astimezone()
 
@@ -134,8 +139,8 @@ class Branch:
             local_name = self.local_checkout()
         self.project.git("merge-tree", "--write-tree", local_name, self.name)
 
-    def last_commit_date(self) -> dt.datetime:
-        return self.project.git.last_commit_date(self.name)
+    def last_commit(self) -> tuple[bytes, dt.datetime]:
+        return self.project.git.last_commit(self.name)
 
 
 class Project:
@@ -187,7 +192,7 @@ class Project:
                 continue
             if fnmatch(name, "remotes/*/HEAD"):
                 continue
-            branch_date = self.git.last_commit_date(name)
+            branch_date = self.git.last_commit(name)[1]
             if now - branch_date < delta:
                 fresh.append(Branch(name, self))
         return fresh
