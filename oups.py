@@ -57,6 +57,14 @@ class Git:
             r"%Y-%m-%d %H:%M:%S %z",
         ).astimezone()
 
+    def branch_contains(self, commit: bytes) -> list[str]:
+        return [
+            line[2:].decode()
+            for line in self("branch", "--contains", commit.decode())
+            .stdout.strip()
+            .split(b"\n")
+        ]
+
     @property
     def config(self) -> dict[str, str | bool]:
         proc = self("config", "list")
