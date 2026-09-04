@@ -277,8 +277,9 @@ def branch_all(
     command = ["branch"]
     if all_branches:
         command.append("--all")
-    if not merged:
-        command.append("--no-merged")
+    # FIXME correct handling of merges and --no-merged
+    # if not merged:
+    #    command.append("--no-merged")
     proc = git(*command)
     b = []
     for line in proc.stdout.split(b"\n"):
