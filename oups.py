@@ -280,9 +280,7 @@ def branch_all(
     proc = git(*command)
     b = []
     for line in proc.stdout.split(b"\n"):
-        if line.startswith(b"* "):
-            continue
-        line = line.strip()
+        line = line.lstrip(b"*").strip()
         m = re.match(rb"\S+", line)
         if m is None:
             continue
