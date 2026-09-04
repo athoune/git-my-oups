@@ -153,13 +153,15 @@ class Branch:
 
 class Project:
     name: str
+    main: str
     current_branch: str
     __branches: dict[str, Branch]
     __branches_name: list[str]
     git: Git
 
-    def __init__(self, git: Git, merged=False):  # only works in the current directory
+    def __init__(self, git: Git, merged=False):
         self.git = git
+        self.main = "main"
         self.current_branch, self.__branches_name = branch_all(self.git, merged)
         self.__branches = {}
 
