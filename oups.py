@@ -1,9 +1,11 @@
 #! /usr/bin/env python3
 import argparse
 import datetime as dt
+import json
 import os
 import re
 import sys
+from abc import abstractmethod
 from collections.abc import Generator
 from fnmatch import fnmatch
 from io import BytesIO
@@ -261,6 +263,38 @@ STDERR:
             else:
                 print(" ✅")
         return ok
+
+
+class Forge:
+    @abstractmethod
+    def branches(self) -> list[Branch]:
+        pass
+
+    @abstractmethod
+    def pull_request(self, branch: Branch | None):
+        pass
+
+
+class GitlabError(CalledProcessError):
+    pass
+
+
+class Gitlab(Forge):
+    def __call__(self, *args):
+        try:
+            proc = run(
+                ["glab"] + list(args) + ["-F", "json"],
+                check=True,
+                capture_output=True,
+                env={**os.environ, "LC_ALL": "C"},
+            )
+        except CalledProcessError as e:
+            raise GitlabError(e.returncode, e.cmd, e.output, e.stderr)
+        return proc
+
+    def pull_request(self, branch: Branch | None):
+        proc = self("mr", "list")
+        return json.loads(proc.stdout)
 
 
 def branch_all(
