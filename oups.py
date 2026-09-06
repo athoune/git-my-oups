@@ -7,7 +7,7 @@ import re
 import sys
 import urllib.parse
 import urllib.request
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from collections.abc import Generator, Mapping
 from fnmatch import fnmatch
 from io import BytesIO
@@ -190,7 +190,7 @@ class Branch:
         return self.project.git.last_commit(self.name)
 
 
-class Forge:
+class Forge(ABC):
     """
     Github, Gitlab, Forgejo
     git uses it as remote
@@ -208,8 +208,9 @@ class Forge:
         self.app = "Abstract forge"
 
     @staticmethod
+    @abstractmethod
     def guess_forge(url: str) -> bool:
-        return False
+        pass
 
     @abstractmethod
     def pull_request(self, branch_name: str) -> "PullRequest | None":
@@ -363,6 +364,15 @@ class GitlabError(CalledProcessError):
     pass
 
 
+class UnknownForge(Forge):
+    def pull_request(self, branch_name: str) -> "PullRequest | None":
+        raise NotImplementedError()
+
+    @staticmethod
+    def guess_forge(url: str) -> bool:
+        return False
+
+
 class Gitlab(Forge):
     def __init__(self, project: "Project", forge_url: str, remote_url: str):
         super().__init__(project, forge_url, remote_url)
@@ -420,7 +430,7 @@ def guess_forge(url) -> Forge:
     for forge in FORGES:
         if forge.guess_forge(url):
             return forge
-    return Forge
+    return UnknownForge
 
 
 def branch_all(
