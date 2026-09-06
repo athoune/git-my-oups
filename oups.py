@@ -1,13 +1,18 @@
 #! /usr/bin/env python3
 import argparse
 import datetime as dt
+import json
 import os
 import re
 import sys
-from collections.abc import Generator
+import urllib.parse
+import urllib.request
+from abc import abstractmethod
+from collections.abc import Generator, Mapping
 from fnmatch import fnmatch
 from io import BytesIO
 from subprocess import CalledProcessError, CompletedProcess, run
+from urllib.error import HTTPError
 
 spaces = re.compile(rb"\s+")
 
@@ -123,7 +128,19 @@ class Branch:
     def remote(self) -> str:
         if self.is_remote():
             raise ValueError("Already a remote branch")
-        self.project.git.config[f"branch.{self.name}.remote"]
+        return self.project.git.config.get(f"branch.{self.name}.remote", "origin")
+
+    def remote_branch(self) -> "Branch | None":
+        if self.is_remote():
+            raise ValueError("Already a remote branch")
+        name = f"remotes/{self.remote()}/{self.name}"
+        if name in self.project.branches:
+            return Branch(name, self.project)
+        return None
+
+    def pull_request(self) -> "PullRequest | None":
+        remote = self.project.forges[self.remote()].pull_requests(self.name)
+        return remote
 
     def local_checkout(self) -> str:
         if not self.is_remote():
@@ -151,19 +168,58 @@ class Branch:
         return self.project.git.last_commit(self.name)
 
 
+class Forge:
+    """
+    Github, Gitlab, Forgejo
+    git uses it as remote
+    """
+
+    forge_url: str
+    remote_name: str
+    remote_url: str
+    project: "Project"
+
+    def __init__(self, project: "Project", forge_url: str, remote_url: str):
+        self.project = project
+        self.forge_url = forge_url
+        self.remote_url = remote_url
+        self.app = "Abstract forge"
+
+    @staticmethod
+    def guess_forge(url: str) -> bool:
+        return False
+
+    @abstractmethod
+    def pull_requests(self, branch_name: str) -> list["PullRequest"]:
+        pass
+
+
+class PullRequest:
+    forge: Forge
+    source_branch: Branch
+    target_branch: Branch
+
+    def __init__(self, forge: Forge, source_branch: Branch, target_branch: Branch):
+        self.forge = forge
+        self.source_branch = source_branch
+        self.target_branch = target_branch
+
+
 class Project:
     name: str
     main: str
-    current_branch: str
+    __current_branch: str
     __branches: dict[str, Branch]
     __branches_name: list[str]
+    __remotes: dict[str, Forge]
     git: Git
 
     def __init__(self, git: Git, merged=False):
         self.git = git
         self.main = "main"
-        self.current_branch, self.__branches_name = branch_all(self.git, merged)
+        self.__current_branch, self.__branches_name = branch_all(self.git, merged)
         self.__branches = {}
+        self.__remotes = {}
 
     @property
     def branches(self) -> dict[str, Branch]:
@@ -173,14 +229,32 @@ class Project:
         return self.__branches
 
     @property
-    def remotes(self) -> dict[str, str]:
-        r = {}
-        for k, v in self.git.config.items():
-            if k.startswith("remote"):
-                _, name, key = k.split(".", 3)
-                if key == "url":
-                    r[name] = v
-        return r
+    def current_branch(self) -> Branch:
+        return Branch(self.__current_branch, self)
+
+    def _guess_forges(self, lines: list[str]) -> dict[str, Forge]:
+        f = {}
+        for line in lines:
+            name, url, _ = re.split(r"\s+", line, maxsplit=3)
+            if name in f:  # assert fetch and pull has same remote
+                continue
+            forge_url = ""
+            if url.startswith("https://"):
+                p = urllib.parse.urlparse(url)
+                forge_url = f"{p.scheme}://{p.netloc}"
+            else:
+                domain = url.split(":", maxsplit=2)[0].split("@", maxsplit=2)[-1]
+                forge_url = f"https://{domain}"
+            f[name] = guess_forge(forge_url)(self, forge_url, url)
+        return f
+
+    @property
+    def remotes(self) -> dict[str, Forge]:
+        if not self.__remotes:
+            self.__remotes = self._guess_forges(
+                self.git("remote", "--verbose").stdout.strip().decode().split("\n")
+            )
+        return self.__remotes
 
     def branches_contains(self, commit: bytes) -> list[Branch]:
         return [
@@ -195,7 +269,7 @@ class Project:
         self.git("fetch")
         self.git("checkout", self.name)
         status = self.git("status", "-sb")
-        self.git("checkout", self.current_branch)
+        self.git("checkout", self.__current_branch)
         m = re.match(rb"\[behind (\d+)\]", status.stdout)
         if m is None:
             raise ParsingException(f"Can't find 'behind' value in '{status.stdout}'")
@@ -220,7 +294,7 @@ class Project:
         for cmd in [
             ["checkout", "-b", TEST_BRANCH_NAME],
             ["rebase", "origin/main"],
-            ["checkout", self.current_branch],
+            ["checkout", self.__current_branch],
             ["branch", "-D", TEST_BRANCH_NAME],
         ]:
             try:
@@ -261,6 +335,59 @@ STDERR:
             else:
                 print(" ✅")
         return ok
+
+
+class GitlabError(CalledProcessError):
+    pass
+
+
+class Gitlab(Forge):
+    def __init__(self, project: "Project", forge_url: str, remote_url: str):
+        super().__init__(project, forge_url, remote_url)
+        self.app = "Gitlab"
+
+    def __call__(self, *args):
+        try:
+            proc = run(
+                ["glab"] + list(args) + ["-F", "json"],
+                check=True,
+                capture_output=True,
+                env={**os.environ, "LC_ALL": "C"},
+            )
+        except CalledProcessError as e:
+            raise GitlabError(e.returncode, e.cmd, e.output, e.stderr)
+        return proc
+
+    def pull_request(self, branch_name: str) -> PullRequest | None:
+        prs = json.loads(self("mr", "list", f"--source-branch={branch_name}").stdout)
+        if prs == []:
+            return None
+        pr: dict[str, str] = prs[0]
+        return PullRequest(
+            self, Branch(self.project, pr["source_branch"]), Branch(pr["target_branch"])
+        )
+
+    @staticmethod
+    def guess_forge(url: str) -> bool:
+        return "x-gitlab-meta" in yolo_url_open(f"{url}/api/v4/")
+
+
+def yolo_url_open(url: str) -> Mapping:
+    try:
+        with urllib.request.urlopen(f"{url}/api/v4/") as f:
+            return f.headers
+    except HTTPError as e:
+        return e.headers
+
+
+FORGES: list[Forge] = [Gitlab]
+
+
+def guess_forge(url) -> Forge:
+    for forge in FORGES:
+        if forge.guess_forge(url):
+            return forge
+    return Forge
 
 
 def branch_all(
@@ -341,6 +468,8 @@ def main(argv: list[str] | None = None) -> None:
         "remote-main",
         help="Test if all active remote branches can be rebased with remote main",
     )
+    subparsers.add_parser("remotes")
+    subparsers.add_parser("show")
 
     args = parser.parse_args(argv)
     git = Git(args.path)
@@ -349,6 +478,9 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "remote-main":
         if not project.remote_main():
             sys.exit(1)
+    elif args.command == "remotes":
+        for name, forge in project.remotes.items():
+            print(name, forge.app, forge.forge_url, forge.remote_url)
     else:  # unreachable: required=True makes argparse exit on missing/unknown command
         parser.error(f"unknown command: {args.command}")
 
