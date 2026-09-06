@@ -1,7 +1,7 @@
 import datetime as dt
 import os
 
-from oups import Git, Project, branch_all, parse_log
+from oups import Git, Gitlab, Project, parse_log
 
 
 def test_parse():
@@ -55,11 +55,16 @@ CommitDate: Tue Aug 18 04:39:45 2026 +0100
     )
 
 
-def test_branch_all():
-    current, _branches = branch_all()
-    assert current == "main"
-
-
-def test_project():
+def test_forge():
     project = Project(Git(os.getcwd()))
-    assert project.current_branch == "main"
+    lines = """
+gitlab  git@gitlab.com:athoune/git-my-oups.git (fetch)
+gitlab  git@gitlab.com:athoune/git-my-oups.git (push)
+origin  git@github.com:athoune/git-my-oups.git (fetch)
+origin  git@github.com:athoune/git-my-oups.git (push)""".strip().split("\n")
+    forges = project._guess_forges(lines)
+    assert len(forges) == 2
+    assert isinstance(forges["gitlab"], Gitlab)
+    assert forges["gitlab"].forge_url == "https://gitlab.com"
+    assert forges["gitlab"].remote_url == "git@gitlab.com:athoune/git-my-oups.git"
+    assert forges["origin"].forge_url == "https://github.com"
