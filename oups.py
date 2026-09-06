@@ -213,7 +213,7 @@ class PullRequest:
 
 class Project:
     name: str
-    main: str
+    main: str  # main or master ?
     __current_branch: str
     __branches: dict[str, Branch]
     __branches_name: list[str]
@@ -273,7 +273,7 @@ class Project:
 
     def behind(self) -> int:
         self.git("fetch")
-        self.git("checkout", self.name)
+        self.git("checkout", self.main)
         status = self.git("status", "-sb")
         self.git("checkout", self.__current_branch)
         m = re.match(rb"\[behind (\d+)\]", status.stdout)
