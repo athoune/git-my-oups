@@ -189,6 +189,29 @@ class Branch:
     def last_commit(self) -> tuple[bytes, dt.datetime]:
         return self.project.git.last_commit(self.name)
 
+    def contributors(self) -> list[str]:
+        main = Branch(self.project.main, self.project)
+        remote_main = main.remote_branch()
+        if remote_main is not None:
+            main_commit = remote_main.last_commit()[0]
+        else:
+            main_commit = main.last_commit()[0]
+        last_commit = self.last_commit()[0]
+        merge_base = (
+            self.project.git("merge-base", main_commit.decode(), last_commit.decode())
+            .stdout.strip()
+            .decode()
+        )
+        logs = [
+            "log",
+            "--no-merges",
+            "--pretty=format:%ae",
+        ]
+        if self.name != self.project.main:
+            logs.append(f"{merge_base}..{last_commit.decode()}")
+        contributors = self.project.git(*logs).stdout.strip().decode()
+        return list(set(contributors.split("\n")))
+
 
 class Forge(ABC):
     """
@@ -507,6 +530,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     subparsers.add_parser("remotes")
     subparsers.add_parser("lag", help="Lag from the remote main branch")
+    subparsers.add_parser("show")
 
     args = parser.parse_args(argv)
     git = Git(args.path)
@@ -520,6 +544,14 @@ def main(argv: list[str] | None = None) -> None:
             print(name, forge.app, forge.forge_url, forge.remote_url)
     elif args.command == "lag":
         print(project.current_branch.lag_from_remote_main())
+    elif args.command == "show":
+        print("Branch:", project.current_branch.name, end="")
+        distant = project.current_branch.remote_branch()
+        if distant is not None:
+            print(" ->", distant.name)
+        else:
+            print()
+        print("Contributors:", ", ".join(project.current_branch.contributors()))
     else:  # unreachable: required=True makes argparse exit on missing/unknown command
         parser.error(f"unknown command: {args.command}")
 
