@@ -144,7 +144,7 @@ class Branch:
 
     def remote_branch(self) -> "Branch | None":
         name = f"remotes/{self.remote_name()}/{self.name}"
-        if name in self.project.branches:
+        if name in branch_all(merged=True)[1]:
             return Branch(name, self.project)
         return None
 
@@ -237,10 +237,10 @@ class Project:
     __remotes: dict[str, Forge]
     git: Git
 
-    def __init__(self, git: Git, merged=False):
+    def __init__(self, git: Git):
         self.git = git
         self.main = "main"
-        self.__current_branch, self.__branches_name = branch_all(self.git, merged)
+        self.__current_branch, self.__branches_name = branch_all(self.git)
         self.__branches = {}
         self.__remotes = {}
 
