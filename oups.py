@@ -507,7 +507,6 @@ def main(argv: list[str] | None = None) -> None:
     )
     subparsers.add_parser("remotes")
     subparsers.add_parser("lag", help="Lag from the remote main branch")
-    subparsers.add_parser("show")
 
     args = parser.parse_args(argv)
     git = Git(args.path)
