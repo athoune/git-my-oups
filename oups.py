@@ -385,12 +385,14 @@ class Gitlab(Forge):
 
     @staticmethod
     def guess_forge(url: str) -> bool:
+        if "gitlab" in url:
+            return True
         return "x-gitlab-meta" in yolo_url_open(f"{url}/api/v4/")
 
 
 def yolo_url_open(url: str) -> Mapping:
     try:
-        with urllib.request.urlopen(f"{url}/api/v4/") as f:
+        with urllib.request.urlopen(f"{url}/api/v4/", timeout=3) as f:
             return f.headers
     except HTTPError as e:
         return e.headers
