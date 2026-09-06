@@ -130,7 +130,8 @@ class Branch:
     def is_remote(self) -> bool:
         return self.name.startswith("remotes/")
 
-    def remote(self) -> str:
+    def remote_name(self) -> str:
+        """Name of the remote for this branch"""
         if self.is_remote():
             raise ValueError("Already a remote branch")
         return cast(
@@ -138,15 +139,13 @@ class Branch:
         )
 
     def remote_branch(self) -> "Branch | None":
-        if self.is_remote():
-            raise ValueError("Already a remote branch")
-        name = f"remotes/{self.remote()}/{self.name}"
+        name = f"remotes/{self.remote_name()}/{self.name}"
         if name in self.project.branches:
             return Branch(name, self.project)
         return None
 
     def pull_request(self) -> "PullRequest | None":
-        remote = self.project.remotes[self.remote()].pull_request(self.name)
+        remote = self.project.remotes[self.remote_name()].pull_request(self.name)
         return remote
 
     def local_checkout(self) -> str:
