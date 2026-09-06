@@ -12,6 +12,7 @@ from collections.abc import Generator, Mapping
 from fnmatch import fnmatch
 from io import BytesIO
 from subprocess import CalledProcessError, CompletedProcess, run
+from typing import cast
 from urllib.error import HTTPError
 
 spaces = re.compile(rb"\s+")
@@ -25,6 +26,10 @@ class ParsingException(Exception):
 
 
 class GitError(CalledProcessError):
+    pass
+
+
+class TooManyPullRequest(Exception):
     pass
 
 
@@ -128,7 +133,9 @@ class Branch:
     def remote(self) -> str:
         if self.is_remote():
             raise ValueError("Already a remote branch")
-        return self.project.git.config.get(f"branch.{self.name}.remote", "origin")
+        return cast(
+            str, self.project.git.config.get(f"branch.{self.name}.remote", "origin")
+        )
 
     def remote_branch(self) -> "Branch | None":
         if self.is_remote():
@@ -139,7 +146,7 @@ class Branch:
         return None
 
     def pull_request(self) -> "PullRequest | None":
-        remote = self.project.forges[self.remote()].pull_requests(self.name)
+        remote = self.project.remotes[self.remote()].pull_request(self.name)
         return remote
 
     def local_checkout(self) -> str:
@@ -190,7 +197,7 @@ class Forge:
         return False
 
     @abstractmethod
-    def pull_requests(self, branch_name: str) -> list["PullRequest"]:
+    def pull_request(self, branch_name: str) -> "PullRequest | None":
         pass
 
 
@@ -362,9 +369,18 @@ class Gitlab(Forge):
         prs = json.loads(self("mr", "list", f"--source-branch={branch_name}").stdout)
         if prs == []:
             return None
+        if len(prs) > 1:
+            raise TooManyPullRequest(
+                "More than one pull request per branch is not Handled"
+            )
         pr: dict[str, str] = prs[0]
         return PullRequest(
-            self, Branch(self.project, pr["source_branch"]), Branch(pr["target_branch"])
+            self,
+            Branch(pr["source_branch"], self.project),
+            Branch(
+                pr["target_branch"],
+                self.project,
+            ),
         )
 
     @staticmethod
