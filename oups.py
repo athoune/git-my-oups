@@ -432,6 +432,7 @@ def branch_all(
     merged=False,
     all_branches=True,
     include: list[str] | None = None,
+    ref="main",
 ) -> tuple[str, list[str]]:
     if git is None:
         git = Git(os.getcwd())
@@ -441,9 +442,8 @@ def branch_all(
     command = ["branch"]
     if all_branches:
         command.append("--all")
-    # FIXME correct handling of merges and --no-merged
-    # if not merged:
-    #    command.append("--no-merged")
+    if not merged:
+        command += ["--no-merged", ref]
     proc = git(*command)
     b = []
     for line in proc.stdout.split(b"\n"):
