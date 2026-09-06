@@ -280,13 +280,7 @@ class Project:
         return self.__remotes
 
     def branches_contains(self, commit: bytes) -> list[Branch]:
-        return [
-            Branch(b.lstrip(b"*").strip().decode(), self)
-            for b in self.git("branch", "--contains", commit.decode()).stdout.split(
-                b"\n"
-            )
-            if b != b""
-        ]
+        return [Branch(b, self) for b in self.git.branch_contains(commit)]
 
     def behind(self) -> int:
         self.git("fetch")
