@@ -33,6 +33,10 @@ class TooManyPullRequest(Exception):
     pass
 
 
+class NotInRemoteBranch(Exception):
+    pass
+
+
 class Git:
     def __init__(self, repo_path: str):
         self.repo_path = repo_path
@@ -133,7 +137,7 @@ class Branch:
     def remote_name(self) -> str:
         """Name of the remote for this branch"""
         if self.is_remote():
-            raise ValueError("Already a remote branch")
+            raise NotInRemoteBranch("Already a remote branch")
         return cast(
             str, self.project.git.config.get(f"branch.{self.name}.remote", "origin")
         )
@@ -143,6 +147,18 @@ class Branch:
         if name in self.project.branches:
             return Branch(name, self.project)
         return None
+
+    def lag_from_remote_main(self) -> int:
+        """This branch junction is n commits behind the remote main branch"""
+        remote_head = self.project.git.last_commit(self.remote_name())
+        junction = self.project.git("merge-base", self.name, self.remote_name())
+        return len(
+            self.project.git(
+                "log", r"--pretty=format:%H %ci", f"{remote_head}..{junction}"
+            )
+            .stdout.strip()
+            .split(b"\n")
+        )
 
     def pull_request(self) -> "PullRequest | None":
         remote = self.project.remotes[self.remote_name()].pull_request(self.name)
@@ -486,6 +502,7 @@ def main(argv: list[str] | None = None) -> None:
         help="Test if all active remote branches can be rebased with remote main",
     )
     subparsers.add_parser("remotes")
+    subparsers.add_parser("lag", help="Lag from the remote main branch")
     subparsers.add_parser("show")
 
     args = parser.parse_args(argv)
@@ -498,6 +515,8 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "remotes":
         for name, forge in project.remotes.items():
             print(name, forge.app, forge.forge_url, forge.remote_url)
+    elif args.command == "lag":
+        print(project.current_branch.lag_from_remote_main())
     else:  # unreachable: required=True makes argparse exit on missing/unknown command
         parser.error(f"unknown command: {args.command}")
 
