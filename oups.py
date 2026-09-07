@@ -732,11 +732,12 @@ def show(project: Project) -> str:
         if not isinstance(project.current_branch.remote, UnknownForge):
             pr = project.current_branch.pull_request()
             buff.write(f"""{project.current_branch.remote.app}
-  pull request: {pr.title if pr is not None else "none"}
+  pull request:
+    title: '{pr.title if pr is not None else "none"}'
 """)
             if pr is not None:
-                buff.write(f"""  draft: {"true" if pr.draft else "false"}
-  state: {pr.state}
+                buff.write(f"""    draft: {"true" if pr.draft else "false"}
+    state: {pr.state}
 """)
 
     return buff.getvalue()
