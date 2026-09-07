@@ -228,21 +228,31 @@ class Branch:
         main = Branch(self.project.main, self.project)
         remote_main = main.remote_branch()
         if remote_main is not None:
-            main_commit = remote_main.last_commit()[0]
+            remote_main_last_commit = remote_main.last_commit()[0]
         else:
-            main_commit = main.last_commit()[0]
-        last_commit = self.last_commit()[0]
+            remote_main_last_commit = main.last_commit()[0]
+        local_last_commit = self.last_commit()[0]
+        fixers = set()
+        contributors = set()
         logs = [
             "log",
             "--no-merges",
             "--pretty=format:%ae %s",
         ]
-        merge_base = self.project.git.merge_base(main_commit, last_commit)
-        if merge_base is not None:
-            logs.append(f"{merge_base.decode()}..{last_commit.decode()}")
-        fixers = set()
-        contributors = set()
+        merge_base = self.project.git.merge_base(
+            local_last_commit,
+            remote_main_last_commit,
+        )
+        if merge_base in (local_last_commit, remote_main_last_commit):
+            # current branch is empty
+            return set(), set()
+        if merge_base is not None and merge_base != local_last_commit:
+            logs.append(f"{merge_base.decode()}..{local_last_commit.decode()}")
+        cpt = 0
         for line in self.project.git(*logs).stdout.strip().decode().split("\n"):
+            if line.strip() == "":
+                continue
+            cpt += 1
             author, subject = line.split(" ", maxsplit=1)
             if (
                 re.match(r"^((hot|quick|bug)?fix(up!)?|build\(deps\))[: ]", subject)
@@ -251,6 +261,7 @@ class Branch:
                 fixers.add(author)
             else:
                 contributors.add(author)
+        print("cpt:", cpt)
         return contributors, fixers
 
 
@@ -606,11 +617,19 @@ def show(project: Project):
                     print()
 
     contributors, fixers = project.current_branch.contributors_and_fixers()
-    print("Contributions by", ", ".join(contributors), end="")
-    if len(fixers):
-        print(f" and fixes by {', '.join(fixers)}")
+    if len(contributors) == 0 and len(fixers) == 0:
+        print("Empty branch")
     else:
-        print()
+        if len(contributors):
+            print("Contributions by", ", ".join(contributors), end="")
+        if len(fixers):
+            if len(contributors):
+                print(" and f")
+            else:
+                print("F", end="")
+            print(f"ixes by {', '.join(fixers)}")
+        else:
+            print()
 
 
 def main(argv: list[str] | None = None) -> None:
