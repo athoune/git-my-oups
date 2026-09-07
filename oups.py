@@ -473,7 +473,10 @@ class UnknownForge(Forge):
 class GitlabPullRequest(PullRequest):
     def __init__(self, forge: Forge, pr: dict[str, Any]):
         super().__init__(forge, pr)
-        self.source_branch = Branch(pr["source_branch"], pr["target_branch"])
+        self.source_branch = Branch(
+            pr["source_branch"],
+            self.forge.project,
+        )
         self.target_branch = Branch(
             pr["target_branch"],
             self.forge.project,
@@ -533,9 +536,9 @@ class Gitlab(Forge):
 class GithubPullRequest(PullRequest):
     def __init__(self, forge: Forge, pr: dict[str, Any]):
         super().__init__(forge, pr)
-        self.source_branch = Branch(pr["source_branch"], pr["target_branch"])
+        self.source_branch = Branch(pr["baseRefName"], self.forge.project)
         self.target_branch = Branch(
-            pr["target_branch"],
+            pr["headRefName"],
             self.forge.project,
         )
         self.title = pr["title"]
