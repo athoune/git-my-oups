@@ -249,11 +249,9 @@ class Branch:
             return set(), set()
         if merge_base is not None and merge_base != local_last_commit:
             logs.append(f"{merge_base.decode()}..{local_last_commit.decode()}")
-        cpt = 0
         for line in self.project.git(*logs).stdout.strip().decode().split("\n"):
             if line.strip() == "":
                 continue
-            cpt += 1
             author, subject = line.split(" ", maxsplit=1)
             if (
                 re.match(r"^((hot|quick|bug)?fix(up!)?|build\(deps\))[: ]", subject)
@@ -262,7 +260,6 @@ class Branch:
                 fixers.add(author)
             else:
                 contributors.add(author)
-        print("cpt:", cpt)
         return contributors, fixers
 
 
