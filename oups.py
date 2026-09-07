@@ -163,15 +163,48 @@ class Branch:
 
     def lag_from_remote_main(self) -> int:
         """This branch junction is n commits behind the remote main branch"""
-        remote_head = self.project.git.last_commit(self.remote_name())
-        junction = self.project.git("merge-base", self.name, self.remote_name())
+        remote_head, _ = self.project.git.last_commit(self.remote_name())
+        junction = self.project.git(
+            "merge-base", self.name, self.remote_name()
+        ).stdout.strip()
         return len(
             self.project.git(
-                "log", r"--pretty=format:%H %ci", f"{remote_head}..{junction}"
+                "log",
+                r"--pretty=format:%H %ci",
+                f"{remote_head.decode()}..{junction.decode()}",
             )
             .stdout.strip()
             .split(b"\n")
         )
+
+    def lag(self) -> int:
+        remote = self.remote_branch()
+        if remote is None:
+            return 0
+        last_local, _ = self.last_commit()
+        last_remote, _ = remote.last_commit()
+        logs = (
+            self.project.git(
+                "log",
+                "--pretty=format:%H",
+                f"{last_local.decode()}..{last_remote.decode()}",
+            )
+            .stdout.strip()
+            .split(b"\n")
+        )
+        n = len(logs)
+        if n == 0:
+            logs = (
+                self.project.git(
+                    "log",
+                    "--pretty=format:%H",
+                    f"{last_remote.decode()}..{last_local.decode()}",
+                )
+                .stdout.strip()
+                .split(b"\n")
+            )
+            return len(logs)
+        return n
 
     def pull_request(self) -> "PullRequest | None":
         remote = self.project.remotes[self.remote_name()].pull_request(self.name)
@@ -534,6 +567,57 @@ def logs(git: Git | None = None, branch: str = "HEAD") -> Generator[Log, None, N
     return parse_log(git("log", "--format=fuller", branch).stdout)
 
 
+def show(project: Project):
+    distant = project.current_branch.remote_branch()
+    if distant is None:
+        print("Current branch is", project.current_branch.name)
+    else:
+        lag = project.current_branch.lag()
+        print("The", project.current_branch.name, "branch", end="")
+        if lag > 0:
+            print(" is above ", end="")
+        elif lag < 0:
+            print(" is below ", end="")
+        else:
+            print(" has remote", end="")
+        if distant is not None:
+            print(distant.name, end="")
+        if lag != 0:
+            print(" by", lag, "commit")
+            if lag > 1:
+                print("s")
+        if (
+            project.current_branch.name != project.main
+            and project.current_branch.remote_branch() is not None
+        ):
+            lag_remote_main = project.current_branch.lag_from_remote_main()
+            if lag_remote_main > 0:
+                print(
+                    project.main,
+                    "is the reference of the fork",
+                    project.current_branch.name,
+                    "but",
+                    project.main,
+                    "is below",
+                    project.current_branch.remote_branch(),
+                    "by",
+                    lag_remote_main,
+                    "commit",
+                    end="",
+                )
+                if lag_remote_main > 1:
+                    print("s")
+                else:
+                    print()
+
+    contributors, fixers = project.current_branch.contributors_and_fixers()
+    print("Contributions by", ", ".join(contributors), end="")
+    if len(fixers):
+        print(f" and fixes by {', '.join(fixers)}")
+    else:
+        print()
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="oups.py", description="Avoid git merge conflicts and other dramas"
@@ -565,18 +649,7 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "lag":
         print(project.current_branch.lag_from_remote_main())
     elif args.command == "show":
-        print("Branch:", project.current_branch.name, end="")
-        distant = project.current_branch.remote_branch()
-        if distant is not None:
-            print(" ->", distant.name)
-        else:
-            print()
-        contributors, fixers = project.current_branch.contributors_and_fixers()
-        print("Contributions by", ", ".join(contributors), end="")
-        if len(fixers):
-            print(f" and fixes by {', '.join(fixers)}")
-        else:
-            print()
+        show(project)
     else:  # unreachable: required=True makes argparse exit on missing/unknown command
         parser.error(f"unknown command: {args.command}")
 
