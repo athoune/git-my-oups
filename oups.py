@@ -666,7 +666,7 @@ def show(project: Project) -> str:
         if pr is None:
             buff.write("has no pull request")
         else:
-            buff.write("has the pull request '{pr.title}'")
+            buff.write(f"has the pull request '{pr.title}'")
         buff.write("\n")
 
     return buff.getvalue()
