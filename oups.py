@@ -702,7 +702,7 @@ def show(project: Project) -> str:
         buff.write(
             f"The local branch '{project.current_branch.name}' is above local '{project.main}' by {lag_from_local_main} commit"
         )
-        if lag_from_remote_main > 1:
+        if lag_from_local_main > 1:
             buff.write("s")
         buff.write(".\n")
 
