@@ -183,17 +183,17 @@ class Branch:
             return Branch(name, self.project)
         return None
 
-    def lag_from_remote_main(self) -> int:
+    def lag_from_remote_main(self) -> int:  # [FIXME] use self.lag
         """This branch junction is n commits behind the remote main branch"""
         remote_branch = self.remote_branch()
         if remote_branch is None:
             raise RemoteBranchException(f"branch {self.name} has no remote branch")
         remote_head = remote_branch.last_commit()[0]
         local_head = self.last_commit()[0]
-        junction = self.project.git(
-            "merge-base", local_head, remote_head.decode()
-        ).stdout.strip()
-        return self.project.git.commits_length_from_to(remote_head, junction)
+        lag = self.project.git.commits_length_from_to(local_head, remote_head)
+        if lag > 0:
+            return lag
+        return -self.project.git.commits_length_from_to(remote_head, local_head)
 
     def lag_from_remote(self) -> int:
         remote = self.remote_branch()
@@ -204,7 +204,10 @@ class Branch:
     def lag(self, branch: "Branch") -> int:
         last_local, _ = self.last_commit()
         last_remote, _ = branch.last_commit()
-        return self.project.git.commits_length_from_to(last_remote, last_local)
+        lag = self.project.git.commits_length_from_to(last_remote, last_local)
+        if lag > 0:
+            return lag
+        return -self.project.git.commits_length_from_to(last_local, last_remote)
 
     def pull_request(self) -> "PullRequest | None":
         return self.remote.pull_request(self.name)
@@ -671,24 +674,21 @@ def no_remotes_prefix(txt: str) -> str:
 
 def show(project: Project) -> str:
     buff = io.StringIO()
-    distant = project.current_branch.remote_branch()
-    if distant is None:
-        buff.write(f"Current branch is {project.current_branch.name}\n")
-    else:
+    distant_branch = project.current_branch.remote_branch()
+    buff.write(f"""Local
+  branch: {project.current_branch.name}\n""")
+    if distant_branch is not None:
+        buff.write("Remote\n")
+        buff.write(f"  branch: '{distant_branch.name}'\n")
         lag = project.current_branch.lag_from_remote()
-        buff.write(f"The '{project.current_branch.name}' branch")
-        if lag > 0:
-            buff.write(" is above")
-        elif lag < 0:
-            buff.write(" is below")
+        buff.write(f"  lag: {abs(lag)}")
+        if lag < 0:
+            buff.write(" forward")
+        elif lag > 0:
+            buff.write(" backward")
         else:
-            buff.write(" has remote")
-        buff.write(f" '{no_remotes_prefix(distant.name)}'")
-        if lag != 0:
-            buff.write(f" by {lag} commit")
-            if lag > 1:
-                buff.write("s")
-        buff.write(".\n")
+            buff.write(" (synced)")
+        buff.write("\n")
 
         if (
             project.current_branch.name != project.main
@@ -708,47 +708,30 @@ def show(project: Project) -> str:
                 buff.write(".\n")
 
     contributors, fixers = project.current_branch.contributors_and_fixers()
-    if len(contributors) == 0 and len(fixers) == 0:
-        buff.write("Empty branch")
+    buff.write("""Contributions
+  contributors: """)
+    if len(contributors) == 0:
+        buff.write("none\n")
     else:
-        if len(contributors):
-            buff.write(f"Contributions by {', '.join(contributors)}")
-        if len(fixers):
-            if len(contributors):
-                buff.write(" and f")
-            else:
-                buff.write("F")
-            buff.write(f"ixes by {', '.join(fixers)}")
-    buff.write(".\n")
+        buff.write(f"{', '.join(contributors)}\n")
+    if len(fixers):
+        buff.write(f"  fixers: {', '.join(fixers)}\n")
+
+    buff.write("Main\n")
+    if project.current_branch.name != project.main:
+        lag_from_local_main = project.current_branch.lag(project.main_branch())
+        buff.write(f"  lag from local main: {lag_from_local_main}\n")
 
     lag_from_remote_main = project.current_branch.lag_from_remote_main()
-    if lag_from_remote_main:
-        buff.write(
-            f"Local '{project.main}' branch is above '{project.current_branch.remote_name()}' by {lag_from_remote_main} commit"
-        )
-        if lag_from_remote_main > 1:
-            buff.write("s")
-        buff.write(", you should pull the '{project.main}'.\n")
-
-    lag_from_local_main = project.current_branch.lag(project.main_branch())
-    if lag_from_local_main:
-        buff.write(
-            f"The local branch '{project.current_branch.name}' is above local '{project.main}' by {lag_from_local_main} commit"
-        )
-        if lag_from_local_main > 1:
-            buff.write("s")
-        buff.write(".\n")
+    buff.write(f"  lag from remote main: {lag_from_remote_main}\n")
 
     if project.current_branch.name != project.main and not isinstance(
         project.current_branch.remote, UnknownForge
     ):
         pr = project.current_branch.pull_request()
-        buff.write(f"The branch '{project.current_branch.name}' ")
-        if pr is None:
-            buff.write("has no pull request")
-        else:
-            buff.write(f"has the pull request '{pr.title}'")
-        buff.write("\n")
+        buff.write(f"""{project.current_branch.remote.app}
+  pull request: {pr.title if pr is not None else "none"}
+""")
 
     return buff.getvalue()
 
