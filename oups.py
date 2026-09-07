@@ -707,31 +707,29 @@ def show(project: Project) -> str:
                     buff.write("s")
                 buff.write(".\n")
 
-    contributors, fixers = project.current_branch.contributors_and_fixers()
-    buff.write("""Contributions
-  contributors: """)
-    if len(contributors) == 0:
-        buff.write("none\n")
-    else:
-        buff.write(f"{', '.join(contributors)}\n")
-    if len(fixers):
-        buff.write(f"  fixers: {', '.join(fixers)}\n")
-
-    buff.write("Main\n")
     if project.current_branch.name != project.main:
+        contributors, fixers = project.current_branch.contributors_and_fixers()
+        buff.write("""Contributions
+      contributors: """)
+        if len(contributors) == 0:
+            buff.write("none\n")
+        else:
+            buff.write(f"{', '.join(contributors)}\n")
+        if len(fixers):
+            buff.write(f"  fixers: {', '.join(fixers)}\n")
+
+        buff.write("Main\n")
         lag_from_local_main = project.current_branch.lag(project.main_branch())
         buff.write(f"  lag from local main: {lag_from_local_main}\n")
 
-    lag_from_remote_main = project.current_branch.lag_from_remote_main()
-    buff.write(f"  lag from remote main: {lag_from_remote_main}\n")
+        lag_from_remote_main = project.current_branch.lag_from_remote_main()
+        buff.write(f"  lag from remote main: {lag_from_remote_main}\n")
 
-    if project.current_branch.name != project.main and not isinstance(
-        project.current_branch.remote, UnknownForge
-    ):
-        pr = project.current_branch.pull_request()
-        buff.write(f"""{project.current_branch.remote.app}
-  pull request: {pr.title if pr is not None else "none"}
-""")
+        if not isinstance(project.current_branch.remote, UnknownForge):
+            pr = project.current_branch.pull_request()
+            buff.write(f"""{project.current_branch.remote.app}
+    pull request: {pr.title if pr is not None else "none"}
+    """)
 
     return buff.getvalue()
 
