@@ -555,24 +555,30 @@ def logs(git: Git | None = None, branch: str = "HEAD") -> Generator[Log, None, N
     return parse_log(git("log", "--format=fuller", branch).stdout)
 
 
+def no_remotes_prefix(txt: str) -> str:
+    if txt.startswith("remotes/"):
+        return txt[len("remotes/") :]
+    return txt
+
+
 def show(project: Project):
     distant = project.current_branch.remote_branch()
     if distant is None:
         print("Current branch is", project.current_branch.name)
     else:
         lag = project.current_branch.lag()
-        print("The", project.current_branch.name, "branch", end="")
+        print(f"The '{project.current_branch.name}' branch", end="")
         if lag > 0:
             print(" is above ", end="")
         elif lag < 0:
             print(" is below ", end="")
         else:
-            print(" has remote", end="")
+            print(" has remote ", end="")
 
         if distant is not None:
-            print(distant.name, end="")
+            print(f"'{no_remotes_prefix(distant.name)}'", end="")
         if lag != 0:
-            print(" by", lag, "commit", end="")
+            print(f" by {lag} commit", end="")
             if lag > 1:
                 print("s")
             else:
@@ -587,16 +593,11 @@ def show(project: Project):
             lag_remote_main = project.current_branch.lag_from_remote_main()
             if lag_remote_main > 0:
                 print(
-                    project.main,
-                    "is the reference of the fork",
-                    project.current_branch.name,
-                    "but",
-                    project.main,
-                    "is below",
-                    project.current_branch.remote_branch(),
-                    "by",
-                    lag_remote_main,
-                    "commit",
+                    f"{project.main} is the reference "
+                    "of the fork { project.current_branch.name } "
+                    "but { project.main  } is below "
+                    "{no_remotes_prefix(project.current_branch.remote_branch()) } "
+                    "by { lag_remote_main } commit",
                     end="",
                 )
                 if lag_remote_main > 1:
