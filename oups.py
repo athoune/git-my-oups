@@ -179,7 +179,7 @@ class Branch:
 
     def remote_branch(self) -> "Branch | None":
         name = f"remotes/{self.remote_name()}/{self.name}"
-        if name in branch_all(merged=True)[1]:
+        if name in branch_all(self.project.git, merged=True)[1]:
             return Branch(name, self.project)
         return None
 
@@ -565,14 +565,12 @@ def guess_forge(url) -> Forge:
 
 
 def branch_all(
-    git: Git | None = None,
+    git: Git,
     merged=False,
     all_branches=True,
     include: list[str] | None = None,
     ref="main",
 ) -> tuple[str, list[str]]:
-    if git is None:
-        git = Git(os.getcwd())
     proc = git("branch", "--show-current")
     current = proc.stdout.strip().decode()
 
