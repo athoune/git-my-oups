@@ -448,6 +448,10 @@ class GitlabError(CalledProcessError):
     pass
 
 
+class GithubError(CalledProcessError):
+    pass
+
+
 class UnknownForge(Forge):
     def pull_request(self, branch_name: str) -> "PullRequest | None":
         raise NotImplementedError()
@@ -500,6 +504,48 @@ class Gitlab(Forge):
         return "x-gitlab-meta" in yolo_url_open(f"{url}/api/v4/")
 
 
+class Github(Forge):
+    def __init__(self, project: "Project", forge_url: str, remote_url: str):
+        super().__init__(project, forge_url, remote_url)
+        self.app = "Github"
+
+    def __call__(self, *args):
+        try:
+            proc = run(
+                ["gh"] + list(args),
+                check=True,
+                capture_output=True,
+                env={**os.environ, "LC_ALL": "C"},
+            )
+        except CalledProcessError as e:
+            raise GithubError(e.returncode, e.cmd, e.output, e.stderr)
+        return proc
+
+    def pull_request(self, branch_name: str) -> PullRequest | None:
+        pr = json.loads(
+            self(
+                "pr",
+                "list",
+                "--head",
+                branch_name,
+                "--json",
+                "title,baseRefName,closed,headRefName,title,createdAt,state,updatedAt",
+            ).stdout
+        )
+        if pr == []:
+            return None
+        return PullRequest(
+            self,
+            source_branch=Branch(branch_name, self.project),
+            target_branch=Branch(pr[0]["baseRefName"], self.project),
+            title=pr[0]["title"],
+        )
+
+    @staticmethod
+    def guess_forge(url: str) -> bool:
+        return "github" in url
+
+
 def yolo_url_open(url: str) -> Mapping:
     try:
         with urllib.request.urlopen(f"{url}/api/v4/", timeout=3) as f:
@@ -508,7 +554,7 @@ def yolo_url_open(url: str) -> Mapping:
         return e.headers
 
 
-FORGES: list[Forge] = [Gitlab]
+FORGES: list[Forge] = [Gitlab, Github]
 
 
 def guess_forge(url) -> Forge:
