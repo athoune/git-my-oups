@@ -189,7 +189,8 @@ class Branch:
     def last_commit(self) -> tuple[bytes, dt.datetime]:
         return self.project.git.last_commit(self.name)
 
-    def contributors(self) -> list[str]:
+    def contributors_and_fixers(self) -> tuple[set[str], set[str]]:
+        """Contributors and fixers of this branch"""
         main = Branch(self.project.main, self.project)
         remote_main = main.remote_branch()
         if remote_main is not None:
@@ -197,20 +198,33 @@ class Branch:
         else:
             main_commit = main.last_commit()[0]
         last_commit = self.last_commit()[0]
-        merge_base = (
-            self.project.git("merge-base", main_commit.decode(), last_commit.decode())
-            .stdout.strip()
-            .decode()
-        )
         logs = [
             "log",
             "--no-merges",
-            "--pretty=format:%ae",
+            "--pretty=format:%ae %s",
         ]
-        if self.name != self.project.main:
-            logs.append(f"{merge_base}..{last_commit.decode()}")
-        contributors = self.project.git(*logs).stdout.strip().decode()
-        return list(set(contributors.split("\n")))
+        try:
+            proc = self.project.git(
+                "merge-base", main_commit.decode(), last_commit.decode()
+            )
+        except GitError as e:
+            if not (e.returncode == 1 and e.stdout == b""):
+                raise
+            # the current branch was never forked from main
+        else:
+            # this branch was forked from main
+            merge_base = proc.stdout.strip().decode()
+            if self.name != self.project.main:
+                logs.append(f"{merge_base}..{last_commit.decode()}")
+        fixers = set()
+        contributors = set()
+        for line in self.project.git(*logs).stdout.strip().decode().split("\n"):
+            author, subject = line.split(" ", maxsplit=1)
+            if re.match(r"^(hot|quick|bug)?fix(up!)?[: ]", subject):
+                fixers.add(author)
+            else:
+                contributors.add(author)
+        return contributors, fixers
 
 
 class Forge(ABC):
@@ -551,7 +565,12 @@ def main(argv: list[str] | None = None) -> None:
             print(" ->", distant.name)
         else:
             print()
-        print("Contributors:", ", ".join(project.current_branch.contributors()))
+        contributors, fixers = project.current_branch.contributors_and_fixers()
+        print("Contributors:", ", ".join(contributors), end="")
+        if len(fixers):
+            print(f" and fixes by {', '.join(fixers)}")
+        else:
+            print()
     else:  # unreachable: required=True makes argparse exit on missing/unknown command
         parser.error(f"unknown command: {args.command}")
 
