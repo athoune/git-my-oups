@@ -79,6 +79,19 @@ class Git:
             .split(b"\n")
         ]
 
+    def merge_base(self, commit_a: bytes, commit_b: bytes) -> bytes | None:
+        if commit_a == commit_b:
+            return None
+        try:
+            proc = self("merge-base", commit_a.decode(), commit_b.decode())
+        except GitError as e:
+            if not (e.returncode == 1 and e.stdout == b""):
+                raise
+            # the current branch was never forked from main
+            return None
+        # this branch was forked from main
+        return proc.stdout.strip()
+
     @property
     def config(self) -> dict[str, str | bool]:
         proc = self("config", "list")
@@ -203,19 +216,9 @@ class Branch:
             "--no-merges",
             "--pretty=format:%ae %s",
         ]
-        try:
-            proc = self.project.git(
-                "merge-base", main_commit.decode(), last_commit.decode()
-            )
-        except GitError as e:
-            if not (e.returncode == 1 and e.stdout == b""):
-                raise
-            # the current branch was never forked from main
-        else:
-            # this branch was forked from main
-            merge_base = proc.stdout.strip().decode()
-            if self.name != self.project.main:
-                logs.append(f"{merge_base}..{last_commit.decode()}")
+        merge_base = self.project.git.merge_base(main_commit, last_commit)
+        if merge_base is not None:
+            logs.append(f"{merge_base.decode()}..{last_commit.decode()}")
         fixers = set()
         contributors = set()
         for line in self.project.git(*logs).stdout.strip().decode().split("\n"):
@@ -569,7 +572,7 @@ def main(argv: list[str] | None = None) -> None:
         else:
             print()
         contributors, fixers = project.current_branch.contributors_and_fixers()
-        print("Contributors:", ", ".join(contributors), end="")
+        print("Contributions by", ", ".join(contributors), end="")
         if len(fixers):
             print(f" and fixes by {', '.join(fixers)}")
         else:
