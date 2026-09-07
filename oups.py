@@ -13,7 +13,7 @@ from collections.abc import Generator, Mapping
 from fnmatch import fnmatch
 from io import BytesIO
 from subprocess import CalledProcessError, CompletedProcess, run
-from typing import cast
+from typing import Any, cast
 from urllib.error import HTTPError
 
 spaces = re.compile(rb"\s+")
@@ -305,14 +305,16 @@ class PullRequest:
     source_branch: Branch
     target_branch: Branch
     title: str
+    author: str
+    assignees: list[str]
+    reviewers: list[str]
+    draft: bool
+    state: str
+    merged_by: str | None
+    closed_by: str | None
 
-    def __init__(
-        self, forge: Forge, source_branch: Branch, target_branch: Branch, title: str
-    ):
+    def __init__(self, forge: Forge, pr: dict[str, Any]):
         self.forge = forge
-        self.source_branch = source_branch
-        self.target_branch = target_branch
-        self.title = title
 
 
 class Project:
@@ -465,6 +467,30 @@ class UnknownForge(Forge):
         return False
 
 
+class GitlabPullRequest(PullRequest):
+    def __init__(self, forge: Forge, pr: dict[str, Any]):
+        super().__init__(forge, pr)
+        self.source_branch = Branch(pr["source_branch"], pr["target_branch"])
+        self.target_branch = Branch(
+            pr["target_branch"],
+            self.forge.project,
+        )
+        self.title = pr["title"]
+        self.author = pr["author"][
+            "username"
+        ]  # [FIXME] fetch the mail with another API call
+        self.assignees = [a["username"] for a in pr["assignees"]]
+        self.reviewers = [a["username"] for a in pr["reviewers"]]
+        self.draft = pr["draft"]
+        self.state = pr["state"]  # merged …
+        self.merged_by = (
+            pr["merged_by"]["username"] if pr["merged_by"] is not None else None
+        )
+        self.closed_by = (
+            pr["closed_by"]["username"] if pr["closed_by"] is not None else None
+        )
+
+
 class Gitlab(Forge):
     def __init__(self, project: "Project", forge_url: str, remote_url: str):
         super().__init__(project, forge_url, remote_url)
@@ -483,29 +509,37 @@ class Gitlab(Forge):
         return proc
 
     def pull_request(self, branch_name: str) -> PullRequest | None:
-        prs = json.loads(self("mr", "list", f"--source-branch={branch_name}").stdout)
+        prs: list[dict[str, Any]] = json.loads(
+            self("mr", "list", f"--source-branch={branch_name}").stdout
+        )
         if prs == []:
             return None
         if len(prs) > 1:
             raise TooManyPullRequest(
                 "More than one pull request per branch is not Handled"
             )
-        pr: dict[str, str] = prs[0]
-        return PullRequest(
-            self,
-            source_branch=Branch(pr["source_branch"], self.project),
-            target_branch=Branch(
-                pr["target_branch"],
-                self.project,
-            ),
-            title=pr["title"],
-        )
+        return GitlabPullRequest(self, prs[0])
 
     @staticmethod
     def guess_forge(url: str) -> bool:
         if "gitlab" in url:
             return True
         return "x-gitlab-meta" in yolo_url_open(f"{url}/api/v4/")
+
+
+class GithubPullRequest(PullRequest):
+    def __init__(self, forge: Forge, pr: dict[str, Any]):
+        super().__init__(forge, pr)
+        self.source_branch = Branch(pr["source_branch"], pr["target_branch"])
+        self.target_branch = Branch(
+            pr["target_branch"],
+            self.forge.project,
+        )
+        self.title = pr["title"]
+        self.author = pr["author"]["login"]
+        self.draft = pr["isDraft"]
+        self.state = pr["state"]
+        self.merged_by = pr["mergedBy"]["login"] if pr["mergedBy"] is not None else None
 
 
 class Github(Forge):
@@ -526,24 +560,23 @@ class Github(Forge):
         return proc
 
     def pull_request(self, branch_name: str) -> PullRequest | None:
-        pr = json.loads(
+        prs: list[dict[str, Any]] = json.loads(
             self(
                 "pr",
                 "list",
                 "--head",
                 branch_name,
                 "--json",
-                "title,baseRefName,closed,headRefName,title,createdAt,state,updatedAt",
+                "title,baseRefName,closed,headRefName,title,createdAt,state,updatedAt,isDraft,assignees,author,closed,mergedBy,reviews",
             ).stdout
         )
-        if pr == []:
+        if prs == []:
             return None
-        return PullRequest(
-            self,
-            source_branch=Branch(branch_name, self.project),
-            target_branch=Branch(pr[0]["baseRefName"], self.project),
-            title=pr[0]["title"],
-        )
+        if len(prs) > 1:
+            raise TooManyPullRequest(
+                "More than one pull request per branch is not Handled"
+            )
+        return GithubPullRequest(self, prs[0])
 
     @staticmethod
     def guess_forge(url: str) -> bool:
