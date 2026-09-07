@@ -157,6 +157,10 @@ class Branch:
         self.project = project
         self._logs = []
 
+    @property
+    def remote(self) -> "Forge":
+        return self.project.remotes[self.remote_name()]
+
     def logs(self) -> list[Log]:
         if not self._logs:
             self._logs = list(logs(self.project.git, self.name))
@@ -199,8 +203,7 @@ class Branch:
         return self.project.git.commits_length_from_to(last_remote, last_local)
 
     def pull_request(self) -> "PullRequest | None":
-        remote = self.project.remotes[self.remote_name()].pull_request(self.name)
-        return remote
+        return self.remote.pull_request(self.name)
 
     def local_checkout(self) -> str:
         if not self.is_remote():
@@ -297,11 +300,15 @@ class PullRequest:
     forge: Forge
     source_branch: Branch
     target_branch: Branch
+    title: str
 
-    def __init__(self, forge: Forge, source_branch: Branch, target_branch: Branch):
+    def __init__(
+        self, forge: Forge, source_branch: Branch, target_branch: Branch, title: str
+    ):
         self.forge = forge
         self.source_branch = source_branch
         self.target_branch = target_branch
+        self.title = title
 
 
 class Project:
@@ -478,11 +485,12 @@ class Gitlab(Forge):
         pr: dict[str, str] = prs[0]
         return PullRequest(
             self,
-            Branch(pr["source_branch"], self.project),
-            Branch(
+            source_branch=Branch(pr["source_branch"], self.project),
+            target_branch=Branch(
                 pr["target_branch"],
                 self.project,
             ),
+            title=pr["title"],
         )
 
     @staticmethod
@@ -649,6 +657,17 @@ def show(project: Project) -> str:
         if lag_from_remote_main > 1:
             buff.write("s")
         buff.write(".\n")
+
+    if project.current_branch.name != project.main and not isinstance(
+        project.current_branch.remote, UnknownForge
+    ):
+        pr = project.current_branch.pull_request()
+        buff.write(f"The branch '{project.current_branch.name}' ")
+        if pr is None:
+            buff.write("has no pull request")
+        else:
+            buff.write("has the pull request '{pr.title}'")
+        buff.write("\n")
 
     return buff.getvalue()
 
