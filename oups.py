@@ -663,10 +663,10 @@ def show(project: Project) -> str:
             if lag_remote_main > 0:
                 buff.write(
                     f"{project.main} is the reference "
-                    "of the fork { project.current_branch.name } "
-                    "but { project.main  } is below "
-                    "{no_remotes_prefix(project.current_branch.remote_branch()) } "
-                    "by { lag_remote_main } commit",
+                    f"of the fork {project.current_branch.name} "
+                    f"but {project.main} is below "
+                    f"{no_remotes_prefix(project.current_branch.remote_branch())} "
+                    f"by {lag_remote_main} commit",
                 )
                 if lag_remote_main > 1:
                     buff.write("s")
