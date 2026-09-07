@@ -220,7 +220,10 @@ class Branch:
         contributors = set()
         for line in self.project.git(*logs).stdout.strip().decode().split("\n"):
             author, subject = line.split(" ", maxsplit=1)
-            if re.match(r"^((hot|quick|bug)?fix(up!)?|build\(deps\))[: ]", subject):
+            if (
+                re.match(r"^((hot|quick|bug)?fix(up!)?|build\(deps\))[: ]", subject)
+                or "[bot]" in author
+            ):
                 fixers.add(author)
             else:
                 contributors.add(author)
