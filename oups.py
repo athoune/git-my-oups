@@ -536,8 +536,9 @@ class Github(Forge):
             return None
         return PullRequest(
             self,
-            Branch(branch_name, self.project),
-            pr[0]["baseRefName"],
+            source_branch=Branch(branch_name, self.project),
+            target_branch=Branch(pr[0]["baseRefName"], self.project),
+            title=pr[0]["title"],
         )
 
     @staticmethod
