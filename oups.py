@@ -571,9 +571,11 @@ def show(project: Project):
         if distant is not None:
             print(distant.name, end="")
         if lag != 0:
-            print(" by", lag, "commit")
+            print(" by", lag, "commit", end="")
             if lag > 1:
                 print("s")
+            else:
+                print()
         if (
             project.current_branch.name != project.main
             and project.current_branch.remote_branch() is not None
