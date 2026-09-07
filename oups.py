@@ -187,12 +187,15 @@ class Branch:
         ).stdout.strip()
         return self.project.git.commits_length_from_to(remote_head, junction)
 
-    def lag(self) -> int:
+    def lag_from_remote(self) -> int:
         remote = self.remote_branch()
         if remote is None:
             return 0
+        return self.lag(remote)
+
+    def lag(self, branch: "Branch") -> int:
         last_local, _ = self.last_commit()
-        last_remote, _ = remote.last_commit()
+        last_remote, _ = branch.last_commit()
         return self.project.git.commits_length_from_to(last_remote, last_local)
 
     def pull_request(self) -> "PullRequest | None":
@@ -308,6 +311,7 @@ class Project:
     __branches: dict[str, Branch]
     __branches_name: list[str]
     __remotes: dict[str, Forge]
+    __main_branch: Branch | None
     git: Git
 
     def __init__(self, git: Git):
@@ -316,6 +320,7 @@ class Project:
         self.__current_branch, self.__branches_name = branch_all(self.git)
         self.__branches = {}
         self.__remotes = {}
+        self.__main_branch = None
 
     @property
     def branches(self) -> dict[str, Branch]:
@@ -392,6 +397,11 @@ class Project:
             except CalledProcessError as e:
                 print(e.args)
                 print(e.stderr)
+
+    def main_branch(self) -> Branch:
+        if self.__main_branch is None:
+            self.__main_branch = Branch(self.main, self)
+        return self.__main_branch
 
     def remote_main(self, include="remotes/*/*") -> bool:
         """Try to merge every fresh remote branch with main and report conflicts."""
@@ -576,7 +586,7 @@ def show(project: Project) -> str:
     if distant is None:
         buff.write(f"Current branch is {project.current_branch.name}\n")
     else:
-        lag = project.current_branch.lag()
+        lag = project.current_branch.lag_from_remote()
         buff.write(f"The '{project.current_branch.name}' branch")
         if lag > 0:
             buff.write(" is above")
@@ -589,7 +599,7 @@ def show(project: Project) -> str:
             buff.write(f" by {lag} commit")
             if lag > 1:
                 buff.write("s")
-        buff.write("\n")
+        buff.write(".\n")
 
         if (
             project.current_branch.name != project.main
@@ -606,7 +616,7 @@ def show(project: Project) -> str:
                 )
                 if lag_remote_main > 1:
                     buff.write("s")
-                buff.write("\n")
+                buff.write(".\n")
 
     contributors, fixers = project.current_branch.contributors_and_fixers()
     if len(contributors) == 0 and len(fixers) == 0:
@@ -620,6 +630,25 @@ def show(project: Project) -> str:
             else:
                 buff.write("F")
             buff.write(f"ixes by {', '.join(fixers)}")
+    buff.write(".\n")
+
+    lag_from_remote_main = project.current_branch.lag_from_remote_main()
+    if lag_from_remote_main:
+        buff.write(
+            f"Local '{project.main}' branch is above '{project.current_branch.remote_name}' by {lag_from_remote_main} commit"
+        )
+        if lag_from_remote_main > 1:
+            buff.write("s")
+        buff.write(", you should pull the '{project.main}'.\n")
+
+    lag_from_local_main = project.current_branch.lag(project.main_branch())
+    if lag_from_local_main:
+        buff.write(
+            f"The local branch '{project.current_branch.name}' is above local '{project.main}' by {lag_from_local_main} commit"
+        )
+        if lag_from_remote_main > 1:
+            buff.write("s")
+        buff.write(".\n")
 
     return buff.getvalue()
 
