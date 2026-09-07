@@ -92,6 +92,23 @@ class Git:
         # this branch was forked from main
         return proc.stdout.strip()
 
+    def commits_length_from_to(self, commit_from: bytes, commit_to: bytes) -> int:
+        """Number of commits from twos hashes."""
+        if commit_from == commit_to:
+            return 0
+        logs = (
+            self(
+                "log",
+                "--pretty=format:%H",
+                f"{commit_from.decode()}..{commit_to.decode()}",
+            )
+            .stdout.strip()
+            .split(b"\n")
+        )
+        if logs == [b""]:
+            return 0
+        return len(logs)
+
     @property
     def config(self) -> dict[str, str | bool]:
         proc = self("config", "list")
@@ -167,15 +184,7 @@ class Branch:
         junction = self.project.git(
             "merge-base", self.name, self.remote_name()
         ).stdout.strip()
-        return len(
-            self.project.git(
-                "log",
-                r"--pretty=format:%H %ci",
-                f"{remote_head.decode()}..{junction.decode()}",
-            )
-            .stdout.strip()
-            .split(b"\n")
-        )
+        return self.project.git.commits_length_from_to(remote_head, junction)
 
     def lag(self) -> int:
         remote = self.remote_branch()
@@ -183,28 +192,7 @@ class Branch:
             return 0
         last_local, _ = self.last_commit()
         last_remote, _ = remote.last_commit()
-        logs = (
-            self.project.git(
-                "log",
-                "--pretty=format:%H",
-                f"{last_local.decode()}..{last_remote.decode()}",
-            )
-            .stdout.strip()
-            .split(b"\n")
-        )
-        n = len(logs)
-        if n == 0:
-            logs = (
-                self.project.git(
-                    "log",
-                    "--pretty=format:%H",
-                    f"{last_remote.decode()}..{last_local.decode()}",
-                )
-                .stdout.strip()
-                .split(b"\n")
-            )
-            return len(logs)
-        return n
+        return self.project.git.commits_length_from_to(last_remote, last_local)
 
     def pull_request(self) -> "PullRequest | None":
         remote = self.project.remotes[self.remote_name()].pull_request(self.name)
