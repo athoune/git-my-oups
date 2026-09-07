@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 import argparse
 import datetime as dt
+import io
 import json
 import os
 import re
@@ -572,30 +573,26 @@ def no_remotes_prefix(txt: str) -> str:
     return txt
 
 
-def show(project: Project):
+def show(project: Project) -> str:
+    buff = io.StringIO()
     distant = project.current_branch.remote_branch()
     if distant is None:
-        print("Current branch is", project.current_branch.name)
+        buff.write(f"Current branch is {project.current_branch.name}\n")
     else:
         lag = project.current_branch.lag()
-        print(f"The '{project.current_branch.name}' branch", end="")
+        buff.write(f"The '{project.current_branch.name}' branch")
         if lag > 0:
-            print(" is above ", end="")
+            buff.write(" is above")
         elif lag < 0:
-            print(" is below ", end="")
+            buff.write(" is below")
         else:
-            print(" has remote ", end="")
-
-        if distant is not None:
-            print(f"'{no_remotes_prefix(distant.name)}'", end="")
+            buff.write(" has remote")
+        buff.write(f" '{no_remotes_prefix(distant.name)}'")
         if lag != 0:
-            print(f" by {lag} commit", end="")
+            buff.write(f" by {lag} commit")
             if lag > 1:
-                print("s")
-            else:
-                print()
-        else:
-            print()
+                buff.write("s")
+        buff.write("\n")
 
         if (
             project.current_branch.name != project.main
@@ -603,33 +600,31 @@ def show(project: Project):
         ):
             lag_remote_main = project.current_branch.lag_from_remote_main()
             if lag_remote_main > 0:
-                print(
+                buff.write(
                     f"{project.main} is the reference "
                     "of the fork { project.current_branch.name } "
                     "but { project.main  } is below "
                     "{no_remotes_prefix(project.current_branch.remote_branch()) } "
                     "by { lag_remote_main } commit",
-                    end="",
                 )
                 if lag_remote_main > 1:
-                    print("s")
-                else:
-                    print()
+                    buff.write("s")
+                buff.write("\n")
 
     contributors, fixers = project.current_branch.contributors_and_fixers()
     if len(contributors) == 0 and len(fixers) == 0:
-        print("Empty branch")
+        buff.write("Empty branch")
     else:
         if len(contributors):
-            print("Contributions by", ", ".join(contributors), end="")
+            buff.write(f"Contributions by {', '.join(contributors)}")
         if len(fixers):
             if len(contributors):
-                print(" and f")
+                buff.write(" and f")
             else:
-                print("F", end="")
-            print(f"ixes by {', '.join(fixers)}")
-        else:
-            print()
+                buff.write("F")
+            buff.write(f"ixes by {', '.join(fixers)}")
+
+    return buff.getvalue()
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -663,7 +658,7 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "lag":
         print(project.current_branch.lag_from_remote_main())
     elif args.command == "show":
-        show(project)
+        print(show(project))
     else:  # unreachable: required=True makes argparse exit on missing/unknown command
         parser.error(f"unknown command: {args.command}")
 
