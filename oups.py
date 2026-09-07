@@ -718,18 +718,23 @@ def show(project: Project) -> str:
         if len(fixers):
             buff.write(f"  fixers: {', '.join(fixers)}\n")
 
-        buff.write("Main\n")
-        lag_from_local_main = project.current_branch.lag(project.main_branch())
-        buff.write(f"  lag from local main: {lag_from_local_main}\n")
+    buff.write("Main\n")
+    lag_from_local_main = project.current_branch.lag(project.main_branch())
+    buff.write(f"  lag from local main: {lag_from_local_main}\n")
 
+    if project.current_branch.name != project.main:
         lag_from_remote_main = project.current_branch.lag_from_remote_main()
         buff.write(f"  lag from remote main: {lag_from_remote_main}\n")
 
         if not isinstance(project.current_branch.remote, UnknownForge):
             pr = project.current_branch.pull_request()
             buff.write(f"""{project.current_branch.remote.app}
-    pull request: {pr.title if pr is not None else "none"}
-    """)
+  pull request: {pr.title if pr is not None else "none"}
+""")
+            if pr is not None:
+                buff.write(f"""  draft: {"true" if pr.draft else "false"}
+  state: {pr.state}
+""")
 
     return buff.getvalue()
 
