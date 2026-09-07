@@ -34,7 +34,7 @@ class TooManyPullRequest(Exception):
     pass
 
 
-class NotInRemoteBranch(Exception):
+class RemoteBranchException(Exception):
     pass
 
 
@@ -172,7 +172,7 @@ class Branch:
     def remote_name(self) -> str:
         """Name of the remote for this branch"""
         if self.is_remote():
-            raise NotInRemoteBranch("Already a remote branch")
+            raise RemoteBranchException("Already a remote branch")
         return cast(
             str, self.project.git.config.get(f"branch.{self.name}.remote", "origin")
         )
