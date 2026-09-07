@@ -185,9 +185,13 @@ class Branch:
 
     def lag_from_remote_main(self) -> int:
         """This branch junction is n commits behind the remote main branch"""
-        remote_head, _ = self.project.git.last_commit(self.remote_name())
+        remote_branch = self.remote_branch()
+        if remote_branch is None:
+            raise RemoteBranchException(f"branch {self.name} has no remote branch")
+        remote_head = remote_branch.last_commit()[0]
+        local_head = self.last_commit()[0]
         junction = self.project.git(
-            "merge-base", self.name, self.remote_name()
+            "merge-base", local_head, remote_head.decode()
         ).stdout.strip()
         return self.project.git.commits_length_from_to(remote_head, junction)
 
