@@ -54,9 +54,9 @@ class Git:
                 env={**os.environ, "LC_ALL": "C"},
             )
         except CalledProcessError as e:
-            if error:
+            if error or os.getenv("VERBOSE"):
                 sys.stderr.write(
-                    f'Error running "git {" ".join(args)}\n\n{e.stderr.decode()}"\n'
+                    f'Error running "git {" ".join(args)}"\n\n{e.stderr.decode()}\n'
                 )
             raise GitError(e.returncode, e.cmd, e.output, e.stderr)
         return proc
@@ -67,10 +67,13 @@ class Git:
             .stdout.strip()
             .split(b" ", maxsplit=1)
         )
-        return hash, dt.datetime.strptime(
-            date.decode(),
-            r"%Y-%m-%d %H:%M:%S %z",
-        ).astimezone()
+        return (
+            hash,
+            dt.datetime.strptime(
+                date.decode(),
+                r"%Y-%m-%d %H:%M:%S %z",
+            ).astimezone(),
+        )
 
     def branch_contains(self, commit: bytes) -> list[str]:
         return [
@@ -303,8 +306,19 @@ class Forge(ABC):
         pass
 
 
-class PullRequest:
+class Comment(ABC):
+    author: str
+    body: str
+    createdAt: dt.datetime
+
+    @abstractmethod
+    def __init__(self, cm: dict[str, Any]):
+        pass
+
+
+class PullRequest(ABC):
     forge: Forge
+    id: str
     source_branch: Branch
     target_branch: Branch
     title: str
@@ -315,10 +329,13 @@ class PullRequest:
     state: str
     merged_by: str | None
     closed_by: str | None
+    comments: list[Comment]
 
     def __init__(self, forge: Forge, pr: dict[str, Any]):
         self.forge = forge
 
+    def commentators(self) -> list[str]:
+        return [comment.author for comment in self.comments]
 
 class Project:
     name: str
@@ -428,11 +445,9 @@ class Project:
                 branch.try_to_merge_with_main()
             except CalledProcessError as e:
                 ok = False
-                print(
-                    f""" 🔥
+                print(f""" 🔥
 
-Error occurred while merging branch {branch.name}:"""
-                )
+Error occurred while merging branch {branch.name}:""")
                 stdout = e.stdout.decode()
                 if stdout:
                     print(f"""
@@ -473,7 +488,10 @@ class UnknownForge(Forge):
 class GitlabPullRequest(PullRequest):
     def __init__(self, forge: Forge, pr: dict[str, Any]):
         super().__init__(forge, pr)
-        self.source_branch = Branch(pr["source_branch"], pr["target_branch"])
+        self.source_branch = Branch(
+            pr["source_branch"],
+            self.forge.project,
+        )
         self.target_branch = Branch(
             pr["target_branch"],
             self.forge.project,
@@ -530,12 +548,21 @@ class Gitlab(Forge):
         return "x-gitlab-meta" in yolo_url_open(f"{url}/api/v4/")
 
 
+class GithubComment(Comment):
+    def __init__(self, cm: dict[str, Any]):
+        super().__init__(cm)
+        self.__raw = cm
+        self.author = cm["author"]["login"]
+        self.body = cm["body"]
+
+
 class GithubPullRequest(PullRequest):
     def __init__(self, forge: Forge, pr: dict[str, Any]):
         super().__init__(forge, pr)
-        self.source_branch = Branch(pr["source_branch"], pr["target_branch"])
+        self.id = pr["number"]
+        self.source_branch = Branch(pr["baseRefName"], self.forge.project)
         self.target_branch = Branch(
-            pr["target_branch"],
+            pr["headRefName"],
             self.forge.project,
         )
         self.title = pr["title"]
@@ -543,6 +570,8 @@ class GithubPullRequest(PullRequest):
         self.draft = pr["isDraft"]
         self.state = pr["state"]
         self.merged_by = pr["mergedBy"]["login"] if pr["mergedBy"] is not None else None
+        self.comments = [GithubComment(c) for c in pr["comments"]]
+
 
 
 class Github(Forge):
@@ -563,23 +592,14 @@ class Github(Forge):
         return proc
 
     def pull_request(self, branch_name: str) -> PullRequest | None:
-        prs: list[dict[str, Any]] = json.loads(
-            self(
-                "pr",
-                "list",
-                "--head",
-                branch_name,
-                "--json",
-                "title,baseRefName,closed,headRefName,title,createdAt,state,updatedAt,isDraft,assignees,author,closed,mergedBy,reviews",
-            ).stdout
+        proc = self(
+            "pr",
+            "view",
+            branch_name,
+            "--json",
+            "title,baseRefName,closed,headRefName,title,createdAt,state,updatedAt,isDraft,assignees,author,closed,mergedBy,reviews,id,number,comments",
         )
-        if prs == []:
-            return None
-        if len(prs) > 1:
-            raise TooManyPullRequest(
-                "More than one pull request per branch is not Handled"
-            )
-        return GithubPullRequest(self, prs[0])
+        return GithubPullRequest(self, json.loads(proc.stdout))
 
     @staticmethod
     def guess_forge(url: str) -> bool:
@@ -611,24 +631,28 @@ def branch_all(
     include: list[str] | None = None,
     ref="main",
 ) -> tuple[str, list[str]]:
-    proc = git("branch", "--show-current")
-    current = proc.stdout.strip().decode()
+    current = git("branch", "--show-current").stdout.strip().decode()
 
-    command = ["branch"]
-    if all_branches:
-        command.append("--all")
-    if not merged:
-        command += ["--no-merged", ref]
-    proc = git(*command)
-    b = []
-    for line in proc.stdout.split(b"\n"):
-        line = line.lstrip(b"*").strip()
-        m = re.match(rb"\S+", line)
-        if m is None:
-            continue
-        branch_name = m.group(0).decode()
-        if include is None or any(fnmatch(branch_name, i) for i in include):
-            b.append(branch_name)
+    if git("branch").stdout.strip() == b"":  # empty git
+        b = []
+    else:
+        command = ["branch"]
+        if all_branches:
+            command.append("--all")
+        if not merged:
+            command.append("--no-merged")
+            if not all_branches:
+                command.append(ref)
+        proc = git(*command)
+        b = []
+        for line in proc.stdout.split(b"\n"):
+            line = line.lstrip(b"*").strip()
+            m = re.match(rb"\S+", line)
+            if m is None:
+                continue
+            branch_name = m.group(0).decode()
+            if include is None or any(fnmatch(branch_name, i) for i in include):
+                b.append(branch_name)
     return current, b
 
 
@@ -672,20 +696,54 @@ def no_remotes_prefix(txt: str) -> str:
     return txt
 
 
+class Output:
+    def __init__(self):
+        self._buff = io.StringIO()
+
+    def write(self, txt: str):
+        self._buff.write(txt)
+
+    def getvalue(self) -> str:
+        return self._buff.getvalue()
+
+    def advice_style(self):
+        if os.isatty(sys.stdout.fileno()):
+            self._buff.write("\x1b[33m")
+
+    def reset_style(self):
+        if os.isatty(sys.stdout.fileno()):
+            self._buff.write("\x1b[39m\x1b[49m")
+
+
 def show(project: Project) -> str:
-    buff = io.StringIO()
+    buff = Output()
     distant_branch = project.current_branch.remote_branch()
-    buff.write(f"""Local
-  branch: {project.current_branch.name}\n""")
+    buff.write(f"""⎮ Local
+⎮   branch: '{project.current_branch.name}'\n""")
+    if project.git("branch").stdout.strip() == b"":
+        buff.write("⎮   empty\n")
+        buff.advice_style()
+        buff.write("No commit yet, add files and 'git add' them")
+        buff.reset_style()
+        return buff.getvalue()
+
+    buff.write("⎮ Remote\n")
+    buff.write(
+        f"⎮   branch: {"'" + distant_branch.name + "'" if distant_branch is not None else 'none'}\n"
+    )
     if distant_branch is not None:
-        buff.write("Remote\n")
-        buff.write(f"  branch: '{distant_branch.name}'\n")
         lag = project.current_branch.lag_from_remote()
-        buff.write(f"  lag: {abs(lag)}")
+        buff.write(f"⎮   lag: {abs(lag)}")
         if lag < 0:
-            buff.write(" forward")
+            buff.write(" forward\n")
+            buff.advice_style()
+            buff.write("Use 'git pull' to update your branch")
+            buff.reset_style()
         elif lag > 0:
-            buff.write(" backward")
+            buff.write(" backward\n")
+            buff.advice_style()
+            buff.write("Use 'git push' to push your branch")
+            buff.reset_style()
         else:
             buff.write(" (synced)")
         buff.write("\n")
@@ -709,27 +767,51 @@ def show(project: Project) -> str:
 
     if project.current_branch.name != project.main:
         contributors, fixers = project.current_branch.contributors_and_fixers()
-        buff.write("""Contributions
-      contributors: """)
+        buff.write("""⎮ Contributions
+⎮   contributors: """)
         if len(contributors) == 0:
             buff.write("none\n")
         else:
             buff.write(f"{', '.join(contributors)}\n")
         if len(fixers):
-            buff.write(f"  fixers: {', '.join(fixers)}\n")
+            buff.write(f"⎮   fixers: {', '.join(fixers)}\n")
 
-        buff.write("Main\n")
-        lag_from_local_main = project.current_branch.lag(project.main_branch())
-        buff.write(f"  lag from local main: {lag_from_local_main}\n")
-
+    buff.write("⎮ Main\n")
+    lag_from_local_main = project.current_branch.lag(project.main_branch())
+    buff.write(
+        f"⎮   lag from local main: {lag_from_local_main if lag_from_local_main >= 0 else '0 (synced)}'}\n"
+    )
+    lag_from_remote_main = 0
+    if project.current_branch.name != project.main:
         lag_from_remote_main = project.current_branch.lag_from_remote_main()
-        buff.write(f"  lag from remote main: {lag_from_remote_main}\n")
+        buff.write(f"⎮   lag from remote main: {lag_from_remote_main}\n")
+    if lag_from_local_main < 0:
+        buff.advice_style()
+        buff.write(
+            f"Use 'git rebase {project.main}' to sync the current branch with the '{project.current_branch.name}' branch\n"
+        )
+        buff.reset_style()
+    if lag_from_remote_main != 0:
+        buff.advice_style()
+        buff.write(
+            f"Use 'git pull {project.main_branch().remote_name()} {project.main}' to sync remote and local '{project.main}'"
+        )
+        buff.reset_style()
 
-        if not isinstance(project.current_branch.remote, UnknownForge):
-            pr = project.current_branch.pull_request()
-            buff.write(f"""{project.current_branch.remote.app}
-    pull request: {pr.title if pr is not None else "none"}
-    """)
+    if not isinstance(project.current_branch.remote, UnknownForge):
+        pr = project.current_branch.pull_request()
+        buff.write(f"""⎮ {project.current_branch.remote.app}
+⎮   pull request:
+⎮     title: '{pr.title if pr is not None else "none"}'
+""")
+        if pr is not None:
+            buff.write(f"""|     id: {pr.id}
+⎮     draft: {"true" if pr.draft else "false"}
+⎮     state: {pr.state}
+""")
+            commentators = set(pr.commentators())
+            if len(commentators):
+                buff.write(f"|     commentators: {', '.join(commentators)}\n")
 
     return buff.getvalue()
 
