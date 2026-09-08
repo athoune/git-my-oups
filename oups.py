@@ -306,7 +306,17 @@ class Forge(ABC):
         pass
 
 
-class PullRequest:
+class Comment(ABC):
+    author: str
+    body: str
+    createdAt: dt.datetime
+
+    @abstractmethod
+    def __init__(self, cm: dict[str, Any]):
+        pass
+
+
+class PullRequest(ABC):
     forge: Forge
     id: str
     source_branch: Branch
@@ -319,10 +329,13 @@ class PullRequest:
     state: str
     merged_by: str | None
     closed_by: str | None
+    comments: list[Comment]
 
     def __init__(self, forge: Forge, pr: dict[str, Any]):
         self.forge = forge
 
+    def commentators(self) -> list[str]:
+        return [comment.author for comment in self.comments]
 
 class Project:
     name: str
@@ -535,6 +548,14 @@ class Gitlab(Forge):
         return "x-gitlab-meta" in yolo_url_open(f"{url}/api/v4/")
 
 
+class GithubComment(Comment):
+    def __init__(self, cm: dict[str, Any]):
+        super().__init__(cm)
+        self.__raw = cm
+        self.author = cm["author"]["login"]
+        self.body = cm["body"]
+
+
 class GithubPullRequest(PullRequest):
     def __init__(self, forge: Forge, pr: dict[str, Any]):
         super().__init__(forge, pr)
@@ -549,6 +570,8 @@ class GithubPullRequest(PullRequest):
         self.draft = pr["isDraft"]
         self.state = pr["state"]
         self.merged_by = pr["mergedBy"]["login"] if pr["mergedBy"] is not None else None
+        self.comments = [GithubComment(c) for c in pr["comments"]]
+
 
 
 class Github(Forge):
@@ -786,6 +809,9 @@ def show(project: Project) -> str:
 ⎮     draft: {"true" if pr.draft else "false"}
 ⎮     state: {pr.state}
 """)
+            commentators = set(pr.commentators())
+            if len(commentators):
+                buff.write(f"|     commentators: {', '.join(commentators)}\n")
 
     return buff.getvalue()
 
