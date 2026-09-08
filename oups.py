@@ -54,9 +54,9 @@ class Git:
                 env={**os.environ, "LC_ALL": "C"},
             )
         except CalledProcessError as e:
-            if error:
+            if error or os.getenv("VERBOSE"):
                 sys.stderr.write(
-                    f'Error running "git {" ".join(args)}\n\n{e.stderr.decode()}"\n'
+                    f'Error running "git {" ".join(args)}"\n\n{e.stderr.decode()}\n'
                 )
             raise GitError(e.returncode, e.cmd, e.output, e.stderr)
         return proc
