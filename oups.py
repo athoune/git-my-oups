@@ -770,17 +770,20 @@ def show(project: Project) -> str:
         buff.reset_style()
     if lag_from_remote_main != 0:
         buff.advice_style()
-        buff.write(f"Use 'git pull {project.main_branch().remote_name()} {project.main}' to sync remote and local '{project.main}'")
+        buff.write(
+            f"Use 'git pull {project.main_branch().remote_name()} {project.main}' to sync remote and local '{project.main}'"
+        )
         buff.reset_style()
 
-        if not isinstance(project.current_branch.remote, UnknownForge):
-            pr = project.current_branch.pull_request()
-            buff.write(f"""⎮ {project.current_branch.remote.app}
+    if not isinstance(project.current_branch.remote, UnknownForge):
+        pr = project.current_branch.pull_request()
+        buff.write(f"""⎮ {project.current_branch.remote.app}
 ⎮   pull request:
 ⎮     title: '{pr.title if pr is not None else "none"}'
 """)
-            if pr is not None:
-                buff.write(f"""⎮     draft: {"true" if pr.draft else "false"}
+        if pr is not None:
+            buff.write(f"""|     id: {pr.id}
+⎮     draft: {"true" if pr.draft else "false"}
 ⎮     state: {pr.state}
 """)
 
