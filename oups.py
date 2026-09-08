@@ -334,8 +334,9 @@ class PullRequest(ABC):
     def __init__(self, forge: Forge, pr: dict[str, Any]):
         self.forge = forge
 
-    def commentators(self) -> list[str]:
+    def commenters(self) -> list[str]:
         return [comment.author for comment in self.comments]
+
 
 class Project:
     name: str
@@ -571,7 +572,6 @@ class GithubPullRequest(PullRequest):
         self.state = pr["state"]
         self.merged_by = pr["mergedBy"]["login"] if pr["mergedBy"] is not None else None
         self.comments = [GithubComment(c) for c in pr["comments"]]
-
 
 
 class Github(Forge):
@@ -814,9 +814,9 @@ def show(project: Project) -> str:
 ⎮     draft: {"true" if pr.draft else "false"}
 ⎮     state: {pr.state}
 """)
-            commentators = set(pr.commentators())
-            if len(commentators):
-                buff.write(f"|     commentators: {', '.join(commentators)}\n")
+            commenters = set(pr.commenters())
+            if len(commenters):
+                buff.write(f"|     commenters: {', '.join(commenters)}\n")
 
     return buff.getvalue()
 
