@@ -615,24 +615,28 @@ def branch_all(
     include: list[str] | None = None,
     ref="main",
 ) -> tuple[str, list[str]]:
-    proc = git("branch", "--show-current")
-    current = proc.stdout.strip().decode()
+    current = git("branch", "--show-current").stdout.strip().decode()
 
-    command = ["branch"]
-    if all_branches:
-        command.append("--all")
-    if not merged:
-        command += ["--no-merged", ref]
-    proc = git(*command)
-    b = []
-    for line in proc.stdout.split(b"\n"):
-        line = line.lstrip(b"*").strip()
-        m = re.match(rb"\S+", line)
-        if m is None:
-            continue
-        branch_name = m.group(0).decode()
-        if include is None or any(fnmatch(branch_name, i) for i in include):
-            b.append(branch_name)
+    if git("branch").stdout.strip() == b"":  # empty git
+        b = []
+    else:
+        command = ["branch"]
+        if all_branches:
+            command.append("--all")
+        if not merged:
+            command.append("--no-merged")
+            if not all_branches:
+                command.append(ref)
+        proc = git(*command)
+        b = []
+        for line in proc.stdout.split(b"\n"):
+            line = line.lstrip(b"*").strip()
+            m = re.match(rb"\S+", line)
+            if m is None:
+                continue
+            branch_name = m.group(0).decode()
+            if include is None or any(fnmatch(branch_name, i) for i in include):
+                b.append(branch_name)
     return current, b
 
 
