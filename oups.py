@@ -572,6 +572,12 @@ class GithubPullRequest(PullRequest):
         self.state = pr["state"]
         self.merged_by = pr["mergedBy"]["login"] if pr["mergedBy"] is not None else None
         self.comments = [GithubComment(c) for c in pr["comments"]]
+        self.commits = [c["oid"] for c in pr["commits"]]
+        authors = set()
+        for c in pr["commits"]:
+            for author in c["authors"]:
+                authors.add(author["login"])
+        self.authors = list(authors)
 
 
 class Github(Forge):
@@ -598,7 +604,7 @@ class Github(Forge):
                 "view",
                 branch_name,
                 "--json",
-                "title,baseRefName,closed,headRefName,title,createdAt,state,updatedAt,isDraft,assignees,author,closed,mergedBy,reviews,id,number,comments",
+                "title,baseRefName,closed,headRefName,title,createdAt,state,updatedAt,isDraft,assignees,author,closed,mergedBy,reviews,id,number,comments,commits",
             )
         except GithubError as e:
             if e.stderr.startswith(b"no pull requests found for branch"):
@@ -724,6 +730,11 @@ class Output:
         self.write(txt)
         self.reset_style()
 
+    def write_plural(self, n: int, unit: str):
+        self.write(f"{n} {unit}")
+        if n > 1:
+            self.write("s")
+
 
 class Show:
     def __init__(self, project: Project):
@@ -745,26 +756,22 @@ class Show:
         return True
 
     def remote(self):
-        self.b.write("⎮ Remote\n")
-        self.b.write(
-            f"⎮   branch: {"'" + self.remote_branch.name + "'" if self.remote_branch is not None else 'none'}\n"
-        )
+        self.b.write("""⎮ Remote
+⎮   branch: """)
         if self.remote_branch is None:
+            self.b.write("'none'\n")
             return
+        self.b.write(f" '{no_remotes_prefix(self.remote_branch.name)}'\n")
         lag = self.current_branch.lag_from_remote()
         self.b.write("⎮   status: ")
         if lag == 0:
             self.b.write("in sync")
         elif lag < 0:
-            self.b.write(f" {-lag} commit")
-            if lag < -1:
-                self.b.write("s")
+            self.b.write_plural(-lag, "commit")
             self.b.write(" behind\n")
             self.b.write_advice("Use 'git pull' to integrate changes")
         else:
-            self.b.write(f" {lag} commit")
-            if lag > 1:
-                self.b.write("s")
+            self.b.write_plural(lag, "commit")
             self.b.write(" ahead\n")
             self.b.write_advice("Use 'git push' to publish")
         self.b.write("\n")
@@ -780,10 +787,9 @@ class Show:
                     f"of the fork {self.current_branch.name} "
                     f"but {self.project.main} is below "
                     f"{no_remotes_prefix(self.remote_branch.name)} "
-                    f"by {lag_remote_main} commit",
+                    "by ",
                 )
-                if lag_remote_main > 1:
-                    self.b.write("s")
+                self.b.write_plural(lag_remote_main, "commit")
                 self.b.write(".\n")
 
     def contributions(self):
@@ -802,7 +808,7 @@ class Show:
         self.b.write("⎮ Main\n")
         lag_from_local_main = self.current_branch.lag(self.main_branch)
         self.b.write(
-            f"⎮   lag from local main: {lag_from_local_main if lag_from_local_main >= 0 else ' in sync'}\n"
+            f"⎮   local main: {lag_from_local_main if lag_from_local_main >= 0 else ' in sync'}\n"
         )
         lag_from_remote_main = 0
         if (
@@ -810,7 +816,7 @@ class Show:
             and self.remote_branch is not None
         ):
             lag_from_remote_main = self.current_branch.lag_from_remote_main()
-            self.b.write(f"⎮   lag from remote main: {lag_from_remote_main}\n")
+            self.b.write(f"⎮   remote main: {lag_from_remote_main}\n")
         if lag_from_local_main < 0:
             self.b.write_advice(
                 f"Use 'git rebase {self.project.main}' to rebase the current branch onto '{self.current_branch.name}'\n"
@@ -821,20 +827,25 @@ class Show:
             )
 
     def pull_request(self):
-        if not isinstance(self.current_branch.remote, UnknownForge):
-            pr = self.current_branch.pull_request()
-            self.b.write(f"""⎮ {self.current_branch.remote.app}
-    ⎮   pull request:
-    ⎮     title: '{pr.title if pr is not None else "none"}'
-    """)
-            if pr is not None:
-                self.b.write(f"""|     id: {pr.id}
-    ⎮     draft: {"true" if pr.draft else "false"}
-    ⎮     state: {pr.state}
-    """)
-                commenters = set(pr.commenters())
-                if len(commenters):
-                    self.b.write(f"|     commenters: {', '.join(commenters)}\n")
+        if isinstance(self.current_branch.remote, UnknownForge):
+            return
+        pr = self.current_branch.pull_request()
+        self.b.write(f"""⎮ {self.current_branch.remote.app}
+⎮   pull request:
+⎮     title: '{pr.title if pr is not None else "none"}'
+""")
+        if pr is None:
+            return
+        self.b.write(f"""⎮     id: {pr.id}
+⎮     draft: {"true" if pr.draft else "false"}
+⎮     state: {pr.state}
+""")
+        commenters = set(pr.commenters())
+        if len(commenters):
+            self.b.write(f"|     commenters: {', '.join(commenters)}\n")
+        authors = set(pr.authors)
+        if len(authors):
+            self.b.write(f"|     authors: {', '.join(authors)}\n")
 
 
 def show(project: Project) -> str:
@@ -844,7 +855,7 @@ def show(project: Project) -> str:
     show.remote()
     show.contributions()
     show.main()
-    # show.pull_request()
+    show.pull_request()
     return show.b.getvalue()
 
 
