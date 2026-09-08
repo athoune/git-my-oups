@@ -308,6 +308,7 @@ class Forge(ABC):
 
 class PullRequest:
     forge: Forge
+    id: str
     source_branch: Branch
     target_branch: Branch
     title: str
@@ -537,6 +538,7 @@ class Gitlab(Forge):
 class GithubPullRequest(PullRequest):
     def __init__(self, forge: Forge, pr: dict[str, Any]):
         super().__init__(forge, pr)
+        self.id = pr["number"]
         self.source_branch = Branch(pr["baseRefName"], self.forge.project)
         self.target_branch = Branch(
             pr["headRefName"],
@@ -567,23 +569,14 @@ class Github(Forge):
         return proc
 
     def pull_request(self, branch_name: str) -> PullRequest | None:
-        prs: list[dict[str, Any]] = json.loads(
-            self(
-                "pr",
-                "list",
-                "--head",
-                branch_name,
-                "--json",
-                "title,baseRefName,closed,headRefName,title,createdAt,state,updatedAt,isDraft,assignees,author,closed,mergedBy,reviews",
-            ).stdout
+        proc = self(
+            "pr",
+            "view",
+            branch_name,
+            "--json",
+            "title,baseRefName,closed,headRefName,title,createdAt,state,updatedAt,isDraft,assignees,author,closed,mergedBy,reviews,id,number,comments",
         )
-        if prs == []:
-            return None
-        if len(prs) > 1:
-            raise TooManyPullRequest(
-                "More than one pull request per branch is not Handled"
-            )
-        return GithubPullRequest(self, prs[0])
+        return GithubPullRequest(self, json.loads(proc.stdout))
 
     @staticmethod
     def guess_forge(url: str) -> bool:
