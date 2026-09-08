@@ -67,10 +67,13 @@ class Git:
             .stdout.strip()
             .split(b" ", maxsplit=1)
         )
-        return hash, dt.datetime.strptime(
-            date.decode(),
-            r"%Y-%m-%d %H:%M:%S %z",
-        ).astimezone()
+        return (
+            hash,
+            dt.datetime.strptime(
+                date.decode(),
+                r"%Y-%m-%d %H:%M:%S %z",
+            ).astimezone(),
+        )
 
     def branch_contains(self, commit: bytes) -> list[str]:
         return [
@@ -428,11 +431,9 @@ class Project:
                 branch.try_to_merge_with_main()
             except CalledProcessError as e:
                 ok = False
-                print(
-                    f""" 🔥
+                print(f""" 🔥
 
-Error occurred while merging branch {branch.name}:"""
-                )
+Error occurred while merging branch {branch.name}:""")
                 stdout = e.stdout.decode()
                 if stdout:
                     print(f"""
