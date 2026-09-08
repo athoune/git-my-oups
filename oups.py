@@ -592,13 +592,18 @@ class Github(Forge):
         return proc
 
     def pull_request(self, branch_name: str) -> PullRequest | None:
-        proc = self(
+        try:
+            proc = self(
             "pr",
             "view",
             branch_name,
             "--json",
             "title,baseRefName,closed,headRefName,title,createdAt,state,updatedAt,isDraft,assignees,author,closed,mergedBy,reviews,id,number,comments",
         )
+        except GithubError as e:
+            if e.stderr.startswith(b"no pull requests found for branch"):
+                return None
+            raise
         return GithubPullRequest(self, json.loads(proc.stdout))
 
     @staticmethod
