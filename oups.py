@@ -738,19 +738,25 @@ def show(project: Project) -> str:
     )
     if distant_branch is not None:
         lag = project.current_branch.lag_from_remote()
-        buff.write(f"⎮   lag: {abs(lag)}")
-        if lag < 0:
-            buff.write(" forward\n")
+        buff.write("⎮   status: ")
+        if lag == 0:
+            buff.write("in sync")
+        elif lag < 0:
+            buff.write(f" {-lag} commit")
+            if lag < -1:
+                buff.write("s")
+            buff.write(" behind\n")
             buff.advice_style()
-            buff.write("Use 'git pull' to update your branch")
-            buff.reset_style()
-        elif lag > 0:
-            buff.write(" backward\n")
-            buff.advice_style()
-            buff.write("Use 'git push' to push your branch")
+            buff.write("Use 'git pull' to integrate changes")
             buff.reset_style()
         else:
-            buff.write(" (synced)")
+            buff.write(f" {lag} commit")
+            if lag > 1:
+                buff.write("s")
+            buff.write(" ahead\n")
+            buff.advice_style()
+            buff.write("Use 'git push' to publish")
+            buff.reset_style()
         buff.write("\n")
 
         if (
@@ -773,18 +779,18 @@ def show(project: Project) -> str:
     if project.current_branch.name != project.main:
         contributors, fixers = project.current_branch.contributors_and_fixers()
         buff.write("""⎮ Contributions
-⎮   contributors: """)
+""")
         if len(contributors) == 0:
-            buff.write("none\n")
+            buff.write("⎮   none\n")
         else:
-            buff.write(f"{', '.join(contributors)}\n")
+            buff.write(f"⎮   by: {', '.join(contributors)}\n")
         if len(fixers):
-            buff.write(f"⎮   fixers: {', '.join(fixers)}\n")
+            buff.write(f"⎮   fix-only: {', '.join(fixers)}\n")
 
     buff.write("⎮ Main\n")
     lag_from_local_main = project.current_branch.lag(project.main_branch())
     buff.write(
-        f"⎮   lag from local main: {lag_from_local_main if lag_from_local_main >= 0 else '0 (synced)}'}\n"
+        f"⎮   lag from local main: {lag_from_local_main if lag_from_local_main >= 0 else '0 (synced)'}\n"
     )
     lag_from_remote_main = 0
     if project.current_branch.name != project.main:
@@ -793,7 +799,7 @@ def show(project: Project) -> str:
     if lag_from_local_main < 0:
         buff.advice_style()
         buff.write(
-            f"Use 'git rebase {project.main}' to sync the current branch with the '{project.current_branch.name}' branch\n"
+            f"Use 'git rebase {project.main}' to rebase the current branch onto '{project.current_branch.name}'\n"
         )
         buff.reset_style()
     if lag_from_remote_main != 0:
