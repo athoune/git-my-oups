@@ -719,112 +719,133 @@ class Output:
         if os.isatty(sys.stdout.fileno()):
             self._buff.write("\x1b[39m\x1b[49m")
 
+    def write_advice(self, txt: str):
+        self.advice_style()
+        self.write(txt)
+        self.reset_style()
 
-def show(project: Project) -> str:
-    buff = Output()
-    distant_branch = project.current_branch.remote_branch()
-    buff.write(f"""⎮ Local
-⎮   branch: '{project.current_branch.name}'\n""")
-    if project.git("branch").stdout.strip() == b"":
-        buff.write("⎮   empty\n")
-        buff.advice_style()
-        buff.write("No commit yet, add files and 'git add' them")
-        buff.reset_style()
-        return buff.getvalue()
 
-    buff.write("⎮ Remote\n")
-    buff.write(
-        f"⎮   branch: {"'" + distant_branch.name + "'" if distant_branch is not None else 'none'}\n"
-    )
-    if distant_branch is not None:
-        lag = project.current_branch.lag_from_remote()
-        buff.write("⎮   status: ")
+class Show:
+    def __init__(self, project: Project):
+        self.project = project
+        self.b = Output()
+        self.current_branch = project.current_branch
+        self.remote_branch = self.current_branch.remote_branch()
+        self.main_branch = project.main_branch()
+        self.remote_main_branch = self.main_branch.remote_branch()
+        self.git = project.git
+
+    def local(self) -> bool:
+        self.b.write(f"""⎮ Local
+⎮   branch: '{self.current_branch.name}'\n""")
+        if self.git("branch").stdout.strip() == b"":
+            self.b.write("⎮   empty\n")
+            self.b.write_advice("No commit yet, add files and 'git add' them")
+            return False
+        return True
+
+    def remote(self):
+        self.b.write("⎮ Remote\n")
+        self.b.write(
+            f"⎮   branch: {"'" + self.remote_branch.name + "'" if self.remote_branch is not None else 'none'}\n"
+        )
+        if self.remote_branch is None:
+            return
+        lag = self.current_branch.lag_from_remote()
+        self.b.write("⎮   status: ")
         if lag == 0:
-            buff.write("in sync")
+            self.b.write("in sync")
         elif lag < 0:
-            buff.write(f" {-lag} commit")
+            self.b.write(f" {-lag} commit")
             if lag < -1:
-                buff.write("s")
-            buff.write(" behind\n")
-            buff.advice_style()
-            buff.write("Use 'git pull' to integrate changes")
-            buff.reset_style()
+                self.b.write("s")
+            self.b.write(" behind\n")
+            self.b.write_advice("Use 'git pull' to integrate changes")
         else:
-            buff.write(f" {lag} commit")
+            self.b.write(f" {lag} commit")
             if lag > 1:
-                buff.write("s")
-            buff.write(" ahead\n")
-            buff.advice_style()
-            buff.write("Use 'git push' to publish")
-            buff.reset_style()
-        buff.write("\n")
+                self.b.write("s")
+            self.b.write(" ahead\n")
+            self.b.write_advice("Use 'git push' to publish")
+        self.b.write("\n")
 
         if (
-            project.current_branch.name != project.main
-            and project.current_branch.remote_branch() is not None
+            self.current_branch.name != self.project.main
+            and self.remote_branch is not None
         ):
-            lag_remote_main = project.current_branch.lag_from_remote_main()
+            lag_remote_main = self.current_branch.lag_from_remote_main()
             if lag_remote_main > 0:
-                buff.write(
-                    f"{project.main} is the reference "
-                    f"of the fork {project.current_branch.name} "
-                    f"but {project.main} is below "
-                    f"{no_remotes_prefix(project.current_branch.remote_branch())} "
+                self.b.write(
+                    f"{self.project.main} is the reference "
+                    f"of the fork {self.current_branch.name} "
+                    f"but {self.project.main} is below "
+                    f"{no_remotes_prefix(self.remote_branch.name)} "
                     f"by {lag_remote_main} commit",
                 )
                 if lag_remote_main > 1:
-                    buff.write("s")
-                buff.write(".\n")
+                    self.b.write("s")
+                self.b.write(".\n")
 
-    if project.current_branch.name != project.main:
-        contributors, fixers = project.current_branch.contributors_and_fixers()
-        buff.write("""⎮ Contributions
+    def contributions(self):
+        if self.current_branch.name != self.project.main:
+            contributors, fixers = self.current_branch.contributors_and_fixers()
+            self.b.write("""⎮ Contributions
 """)
-        if len(contributors) == 0:
-            buff.write("⎮   none\n")
-        else:
-            buff.write(f"⎮   by: {', '.join(contributors)}\n")
-        if len(fixers):
-            buff.write(f"⎮   fix-only: {', '.join(fixers)}\n")
+            if len(contributors) == 0:
+                self.b.write("⎮   none\n")
+            else:
+                self.b.write(f"⎮   by: {', '.join(contributors)}\n")
+            if len(fixers):
+                self.b.write(f"⎮   fix-only: {', '.join(fixers)}\n")
 
-    buff.write("⎮ Main\n")
-    lag_from_local_main = project.current_branch.lag(project.main_branch())
-    buff.write(
-        f"⎮   lag from local main: {lag_from_local_main if lag_from_local_main >= 0 else '0 (synced)'}\n"
-    )
-    lag_from_remote_main = 0
-    if project.current_branch.name != project.main:
-        lag_from_remote_main = project.current_branch.lag_from_remote_main()
-        buff.write(f"⎮   lag from remote main: {lag_from_remote_main}\n")
-    if lag_from_local_main < 0:
-        buff.advice_style()
-        buff.write(
-            f"Use 'git rebase {project.main}' to rebase the current branch onto '{project.current_branch.name}'\n"
+    def main(self):
+        self.b.write("⎮ Main\n")
+        lag_from_local_main = self.current_branch.lag(self.main_branch)
+        self.b.write(
+            f"⎮   lag from local main: {lag_from_local_main if lag_from_local_main >= 0 else ' in sync'}\n"
         )
-        buff.reset_style()
-    if lag_from_remote_main != 0:
-        buff.advice_style()
-        buff.write(
-            f"Use 'git pull {project.main_branch().remote_name()} {project.main}' to sync remote and local '{project.main}'"
-        )
-        buff.reset_style()
+        lag_from_remote_main = 0
+        if (
+            self.current_branch.name != self.project.main
+            and self.remote_branch is not None
+        ):
+            lag_from_remote_main = self.current_branch.lag_from_remote_main()
+            self.b.write(f"⎮   lag from remote main: {lag_from_remote_main}\n")
+        if lag_from_local_main < 0:
+            self.b.write_advice(
+                f"Use 'git rebase {self.project.main}' to rebase the current branch onto '{self.current_branch.name}'\n"
+            )
+        if lag_from_remote_main != 0:
+            self.b.write_advice(
+                f"Use 'git pull {self.project.main_branch().remote_name()} {self.project.main}' to sync remote and local '{self.project.main}'"
+            )
 
-    if not isinstance(project.current_branch.remote, UnknownForge):
-        pr = project.current_branch.pull_request()
-        buff.write(f"""⎮ {project.current_branch.remote.app}
-⎮   pull request:
-⎮     title: '{pr.title if pr is not None else "none"}'
-""")
-        if pr is not None:
-            buff.write(f"""|     id: {pr.id}
-⎮     draft: {"true" if pr.draft else "false"}
-⎮     state: {pr.state}
-""")
-            commenters = set(pr.commenters())
-            if len(commenters):
-                buff.write(f"|     commenters: {', '.join(commenters)}\n")
+    def pull_request(self):
+        if not isinstance(self.current_branch.remote, UnknownForge):
+            pr = self.current_branch.pull_request()
+            self.b.write(f"""⎮ {self.current_branch.remote.app}
+    ⎮   pull request:
+    ⎮     title: '{pr.title if pr is not None else "none"}'
+    """)
+            if pr is not None:
+                self.b.write(f"""|     id: {pr.id}
+    ⎮     draft: {"true" if pr.draft else "false"}
+    ⎮     state: {pr.state}
+    """)
+                commenters = set(pr.commenters())
+                if len(commenters):
+                    self.b.write(f"|     commenters: {', '.join(commenters)}\n")
 
-    return buff.getvalue()
+
+def show(project: Project) -> str:
+    show = Show(project)
+    if not show.local():
+        return show.b.getvalue()
+    show.remote()
+    show.contributions()
+    show.main()
+    # show.pull_request()
+    return show.b.getvalue()
 
 
 def main(argv: list[str] | None = None) -> None:
