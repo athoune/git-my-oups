@@ -680,20 +680,54 @@ def no_remotes_prefix(txt: str) -> str:
     return txt
 
 
+class Output:
+    def __init__(self):
+        self._buff = io.StringIO()
+
+    def write(self, txt: str):
+        self._buff.write(txt)
+
+    def getvalue(self) -> str:
+        return self._buff.getvalue()
+
+    def advice_style(self):
+        if os.isatty(sys.stdout.fileno()):
+            self._buff.write("\x1b[33m")
+
+    def reset_style(self):
+        if os.isatty(sys.stdout.fileno()):
+            self._buff.write("\x1b[39m\x1b[49m")
+
+
 def show(project: Project) -> str:
-    buff = io.StringIO()
+    buff = Output()
     distant_branch = project.current_branch.remote_branch()
-    buff.write(f"""Local
-  branch: {project.current_branch.name}\n""")
+    buff.write(f"""⎮ Local
+⎮   branch: '{project.current_branch.name}'\n""")
+    if project.git("branch").stdout.strip() == b"":
+        buff.write("⎮   empty\n")
+        buff.advice_style()
+        buff.write("No commit yet, add files and 'git add' them")
+        buff.reset_style()
+        return buff.getvalue()
+
+    buff.write("⎮ Remote\n")
+    buff.write(
+        f"⎮   branch: {"'" + distant_branch.name + "'" if distant_branch is not None else 'none'}\n"
+    )
     if distant_branch is not None:
-        buff.write("Remote\n")
-        buff.write(f"  branch: '{distant_branch.name}'\n")
         lag = project.current_branch.lag_from_remote()
-        buff.write(f"  lag: {abs(lag)}")
+        buff.write(f"⎮   lag: {abs(lag)}")
         if lag < 0:
-            buff.write(" forward")
+            buff.write(" forward\n")
+            buff.advice_style()
+            buff.write("Use 'git pull' to update your branch")
+            buff.reset_style()
         elif lag > 0:
-            buff.write(" backward")
+            buff.write(" backward\n")
+            buff.advice_style()
+            buff.write("Use 'git push' to push your branch")
+            buff.reset_style()
         else:
             buff.write(" (synced)")
         buff.write("\n")
@@ -717,32 +751,44 @@ def show(project: Project) -> str:
 
     if project.current_branch.name != project.main:
         contributors, fixers = project.current_branch.contributors_and_fixers()
-        buff.write("""Contributions
-      contributors: """)
+        buff.write("""⎮ Contributions
+⎮   contributors: """)
         if len(contributors) == 0:
             buff.write("none\n")
         else:
             buff.write(f"{', '.join(contributors)}\n")
         if len(fixers):
-            buff.write(f"  fixers: {', '.join(fixers)}\n")
+            buff.write(f"⎮   fixers: {', '.join(fixers)}\n")
 
-    buff.write("Main\n")
+    buff.write("⎮ Main\n")
     lag_from_local_main = project.current_branch.lag(project.main_branch())
-    buff.write(f"  lag from local main: {lag_from_local_main}\n")
-
+    buff.write(
+        f"⎮   lag from local main: {lag_from_local_main if lag_from_local_main >= 0 else '0 (synced)}'}\n"
+    )
+    lag_from_remote_main = 0
     if project.current_branch.name != project.main:
         lag_from_remote_main = project.current_branch.lag_from_remote_main()
-        buff.write(f"  lag from remote main: {lag_from_remote_main}\n")
+        buff.write(f"⎮   lag from remote main: {lag_from_remote_main}\n")
+    if lag_from_local_main < 0:
+        buff.advice_style()
+        buff.write(
+            f"Use 'git rebase {project.main}' to sync the current branch with the '{project.current_branch.name}' branch\n"
+        )
+        buff.reset_style()
+    if lag_from_remote_main != 0:
+        buff.advice_style()
+        buff.write(f"Use 'git pull {project.main_branch().remote_name()} {project.main}' to sync remote and local '{project.main}'")
+        buff.reset_style()
 
         if not isinstance(project.current_branch.remote, UnknownForge):
             pr = project.current_branch.pull_request()
-            buff.write(f"""{project.current_branch.remote.app}
-  pull request:
-    title: '{pr.title if pr is not None else "none"}'
+            buff.write(f"""⎮ {project.current_branch.remote.app}
+⎮   pull request:
+⎮     title: '{pr.title if pr is not None else "none"}'
 """)
             if pr is not None:
-                buff.write(f"""    draft: {"true" if pr.draft else "false"}
-    state: {pr.state}
+                buff.write(f"""⎮     draft: {"true" if pr.draft else "false"}
+⎮     state: {pr.state}
 """)
 
     return buff.getvalue()
