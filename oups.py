@@ -836,6 +836,8 @@ class Show:
                 self.b.write(f"⎮   fix-only: {', '.join(fixers)}\n")
 
     def main(self):
+        if self.current_branch.name == self.project.main:
+            return
         self.b.write("⎮ Main\n")
         gap_from_local_main = self.current_branch.gap(self.main_branch)
         self.b.write(
