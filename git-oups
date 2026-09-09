@@ -790,9 +790,9 @@ class Show:
         self.b.write("""⎮ Remote
 ⎮   branch: """)
         if self.remote_branch is None:
-            self.b.write("'none'\n")
+            self.b.write("none\n")
             return
-        self.b.write(f" '{no_remotes_prefix(self.remote_branch.name)}'\n")
+        self.b.write(f"'{no_remotes_prefix(self.remote_branch.name)}'\n")
         gap = self.current_branch.gap_from_remote()
         self.b.write("⎮   status: ")
         if gap == 0:
@@ -841,7 +841,7 @@ class Show:
         self.b.write("⎮ Main\n")
         gap_from_local_main = self.current_branch.gap(self.main_branch)
         self.b.write(
-            f"⎮   local main: {gap_from_local_main if gap_from_local_main >= 0 else ' in sync'}\n"
+            f"⎮   local main: {gap_from_local_main if gap_from_local_main >= 0 else 'in sync'}\n"
         )
         gap_from_remote_main = 0
         if (
@@ -852,7 +852,7 @@ class Show:
             self.b.write(f"⎮   remote main: {gap_from_remote_main}\n")
         if gap_from_local_main < 0:
             self.b.write_advice(
-                f"Use 'git rebase {self.project.main}' to rebase the current branch onto '{self.current_branch.name}'\n"
+                f"Use 'git rebase {self.project.main}' to rebase the current branch onto '{self.project.main}'\n"
             )
         if gap_from_remote_main != 0:
             self.b.write_advice(
@@ -871,7 +871,7 @@ class Show:
             self.b.write(" none\n")
             return
         self.b.write(
-            """
+            f"""
 ⎮     title: '{pr.title}'
 """
         )
