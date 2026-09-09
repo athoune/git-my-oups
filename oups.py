@@ -864,9 +864,15 @@ class Show:
             return
         pr = self.current_branch.pull_request()
         self.b.write(f"""⎮ {self.current_branch.remote.app}
-⎮   pull request:
-⎮     title: '{pr.title if pr is not None else "none"}'
-""")
+⎮   pull request:""")
+        if pr is None:
+            self.b.write(" none\n")
+            return
+        self.b.write(
+            """
+⎮     title: '{pr.title}'
+"""
+        )
         if pr is None:
             return
         self.b.write(f"""⎮     id: {pr.id}
