@@ -334,6 +334,8 @@ class PullRequest(ABC):
     merged_by: str | None
     closed_by: str | None
     comments: list[Comment]
+    ref_oid: str
+    authors: list[str]
 
     def __init__(self, forge: Forge, pr: dict[str, Any]):
         self.forge = forge
@@ -573,7 +575,7 @@ class GithubPullRequest(PullRequest):
         self.title = pr["title"]
         self.author = pr["author"]["login"]
         self.draft = pr["isDraft"]
-        self.state = pr["state"]
+        self.state = pr["state"].lower()  # open, closed, merged
         self.merged_by = pr["mergedBy"]["login"] if pr["mergedBy"] is not None else None
         self.comments = [GithubComment(c) for c in pr["comments"]]
         self.commits = [c["oid"] for c in pr["commits"]]
@@ -757,10 +759,12 @@ class Output:
         self.write(txt)
         self.reset_style()
 
-    def write_plural(self, n: int, unit: str):
-        self.write(f"{n} {unit}")
-        if n > 1:
-            self.write("s")
+    def write_plural(self, n: int, unit: str, inline: bool = False) -> str:
+        txt = f"{n} {unit}{'s' if n > 1 else ''}"
+        if inline:
+            return txt
+        self.write(txt)
+        return ""
 
 
 class Show:
@@ -875,6 +879,14 @@ class Show:
         authors = set(pr.authors)
         if len(authors):
             self.b.write(f"|     authors: {', '.join(authors)}\n")
+        if pr.state in ("closed", "merged"):
+            gap = self.git.commits_length_from_to(
+                pr.ref_oid.encode(), self.current_branch.last_commit()[0]
+            )
+            if gap > 0:
+                self.b.write_advice(
+                    f"⚠️ The PR was {pr.state} {self.b.write_plural(gap, 'commit', True)} behind.\n"
+                )
 
 
 def show(project: Project) -> str:
