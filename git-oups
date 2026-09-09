@@ -165,8 +165,8 @@ class Branch:
         self._logs = []
 
     @property
-    def remote(self) -> "Forge":
-        return self.project.remotes[self.remote_name()]
+    def remote(self) -> "Forge | None":
+        return self.project.remotes.get(self.remote_name())
 
     def logs(self) -> list[Log]:
         if not self._logs:
@@ -217,6 +217,8 @@ class Branch:
         return -self.project.git.commits_length_from_to(last_local, last_remote)
 
     def pull_request(self) -> "PullRequest | None":
+        if self.remote is None:
+            return None
         return self.remote.pull_request(self.name)
 
     def local_checkout(self) -> str:
@@ -376,6 +378,8 @@ class Project:
     def _guess_forges(self, lines: list[str]) -> dict[str, Forge]:
         f = {}
         for line in lines:
+            if line == "":
+                continue
             name, url, _ = re.split(r"\s+", line, maxsplit=3)
             if name in f:  # assert fetch and pull has same remote
                 continue
@@ -862,7 +866,9 @@ class Show:
             )
 
     def pull_request(self):
-        if isinstance(self.current_branch.remote, UnknownForge):
+        if self.current_branch.remote is None or isinstance(
+            self.current_branch.remote, UnknownForge
+        ):
             return
         pr = self.current_branch.pull_request()
         self.b.write(f"""⎮ {self.current_branch.remote.app}
