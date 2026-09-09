@@ -38,6 +38,12 @@ class RemoteBranchException(Exception):
     pass
 
 
+class UnknownRefException(Exception):
+    "The ref doesn't exist in any branch"
+
+    pass
+
+
 class Git:
     def __init__(self, repo_path: str):
         self.repo_path = repo_path
@@ -341,9 +347,23 @@ class PullRequest(ABC):
 
     def __init__(self, forge: Forge, pr: dict[str, Any]):
         self.forge = forge
+        self.__ref = None
 
     def commenters(self) -> list[str]:
         return [comment.author for comment in self.comments]
+
+    @property
+    def ref(self) -> bytes:
+        if self.__ref is None:
+            try:
+                self.__ref = self.forge.project.git(
+                    "show", "--pretty=oneline", self.ref_oid
+                ).stdout.strip()
+            except GitError as e:
+                if e.returncode == 128 and e.stderr.startswith(b"fatal: bad object"):
+                    raise UnknownRefException(self.ref_oid)
+                raise
+        return self.__ref
 
 
 class Project:
@@ -889,14 +909,18 @@ class Show:
 """)
         commenters = set(pr.commenters())
         if len(commenters):
-            self.b.write(f"|     commenters: {', '.join(commenters)}\n")
+            self.b.write(f"⎮     commenters: {', '.join(commenters)}\n")
         authors = set(pr.authors)
         if len(authors):
-            self.b.write(f"|     authors: {', '.join(authors)}\n")
+            self.b.write(f"⎮     authors: {', '.join(authors)}\n")
         if pr.state in ("closed", "merged"):
-            gap = self.git.commits_length_from_to(
-                pr.ref_oid.encode(), self.current_branch.last_commit()[0]
-            )
+            try:
+                gap = self.git.commits_length_from_to(
+                    pr.ref, self.current_branch.last_commit()[0]
+                )
+            except UnknownRefException:
+                self.b.write_advice("⚠️ The PR lost its ref to git.")
+                return
             if gap > 0:
                 self.b.write_advice(
                     f"⚠️ The PR was {pr.state} {self.b.write_plural(gap, 'commit', True)} behind.\n"
