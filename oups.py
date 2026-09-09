@@ -96,7 +96,9 @@ class Git:
         # this branch was forked from main
         return proc.stdout.strip()
 
-    def commits_length_from_to(self, commit_from: bytes, commit_to: bytes) -> int:
+    def commits_length_from_to(
+        self, commit_from: bytes, commit_to: bytes, try_reverse: bool = True
+    ) -> int:
         """Number of commits from twos hashes."""
         if commit_from == commit_to:
             return 0
@@ -110,6 +112,8 @@ class Git:
             .split(b"\n")
         )
         if logs == [b""]:
+            if try_reverse:
+                return -self.commits_length_from_to(commit_to, commit_from, False)
             return 0
         return len(logs)
 
