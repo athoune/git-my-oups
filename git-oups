@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 import argparse
 import datetime as dt
+import inspect
 import io
 import json
 import os
@@ -20,6 +21,35 @@ spaces = re.compile(rb"\s+")
 
 DATE_FORMAT = r"%a %b %d %H:%M:%S %Y %z"
 TEST_BRANCH_NAME = "___test-rebase"
+DEBUG = os.getenv("DEBUG")
+DUMP = os.getenv("DUMP")
+
+
+class CliCallStack:
+    def __init__(self, info: CalledProcessError | CompletedProcess):
+        if isinstance(info, CompletedProcess):
+            self.command = info.args
+        else:
+            self.command = info.cmd
+        self.stdout = info.stdout.decode()
+        self.stderr = info.stderr.decode()
+        self.returncode = info.returncode
+        frame = inspect.getouterframes(inspect.currentframe())[2]
+        self.caller = dict(
+            function=frame.function, lineno=frame.lineno, filename=frame.filename
+        )
+
+    def __repr__(self):
+        return f"""<CliCallStack
+    command= {str(self.command)}
+    stdout= {self.stdout}
+    stderr= {self.stderr}
+    returncode= {self.returncode}
+    frame={self.caller}
+>"""
+
+
+call_stacks: list[CliCallStack] = []
 
 
 class ParsingException(Exception):
@@ -60,11 +90,15 @@ class Git:
                 env={**os.environ, "LC_ALL": "C"},
             )
         except CalledProcessError as e:
+            if DUMP or DEBUG:
+                call_stacks.append(CliCallStack(e))
             if error or os.getenv("VERBOSE"):
                 sys.stderr.write(
                     f'Error running "git {" ".join(args)}"\n\n{e.stderr.decode()}\n'
                 )
             raise GitError(e.returncode, e.cmd, e.output, e.stderr)
+        if DUMP:
+            call_stacks.append(CliCallStack(proc))
         return proc
 
     def last_commit(self, branch: str) -> tuple[bytes, dt.datetime]:
@@ -557,7 +591,11 @@ class Gitlab(Forge):
                 env={**os.environ, "LC_ALL": "C"},
             )
         except CalledProcessError as e:
+            if DEBUG:
+                call_stacks.append(CliCallStack(e))
             raise GitlabError(e.returncode, e.cmd, e.output, e.stderr)
+        if DUMP:
+            call_stacks.append(CliCallStack(proc))
         return proc
 
     def pull_request(self, branch_name: str) -> PullRequest | None:
@@ -625,7 +663,11 @@ class Github(Forge):
                 env={**os.environ, "LC_ALL": "C"},
             )
         except CalledProcessError as e:
+            if DEBUG:
+                call_stacks.append(CliCallStack(e))
             raise GithubError(e.returncode, e.cmd, e.output, e.stderr)
+        if DUMP:
+            call_stacks.append(CliCallStack(proc))
         return proc
 
     def pull_request(self, branch_name: str) -> PullRequest | None:
@@ -960,18 +1002,27 @@ def main(argv: list[str] | None = None) -> None:
     git = Git(args.path)
     project = Project(git)
 
-    if args.command == "remote-main":
-        if not project.remote_main():
-            sys.exit(1)
-    elif args.command == "remotes":
-        for name, forge in project.remotes.items():
-            print(name, forge.app, forge.forge_url, forge.remote_url)
-    elif args.command == "gap":
-        print(project.current_branch.gap_from_remote_main())
-    elif args.command == "show":
-        print(show(project))
-    else:  # unreachable: required=True makes argparse exit on missing/unknown command
-        parser.error(f"unknown command: {args.command}")
+    try:
+        if args.command == "remote-main":
+            if not project.remote_main():
+                sys.exit(1)
+        elif args.command == "remotes":
+            for name, forge in project.remotes.items():
+                print(name, forge.app, forge.forge_url, forge.remote_url)
+        elif args.command == "gap":
+            print(project.current_branch.gap_from_remote_main())
+        elif args.command == "show":
+            print(show(project))
+        else:  # unreachable: required=True makes argparse exit on missing/unknown command
+            parser.error(f"unknown command: {args.command}")
+    except Exception as e:
+        if os.getenv("DEBUG"):
+            print(call_stacks)
+        raise
+    if DUMP:
+        f = open(f"__oups-{os.getpid()}-dump.json", "w")
+        json.dump([cs.__dict__ for cs in call_stacks], f, default=str)
+        f.close()
 
 
 if __name__ == "__main__":
