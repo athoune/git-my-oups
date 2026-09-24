@@ -988,15 +988,20 @@ def main(argv: list[str] | None = None) -> None:
         "--path", type=str, default=os.getcwd(), help="Path to the git repository"
     )
     subparsers = parser.add_subparsers(
-        title="subcommands", help="operations", dest="command", required=True
+        title="actions", help="available actions", dest="command", metavar="ACTION"
+    )
+    subparsers.add_parser(
+        "show",
+        help="Show the state of the current branch (default action)",
     )
     subparsers.add_parser(
         "remote-main",
         help="Test if all active remote branches can be rebased with remote main",
     )
-    subparsers.add_parser("remotes")
+    subparsers.add_parser("remotes", help="List the remotes and their detected forge")
     subparsers.add_parser("gap", help="Gap from the remote main branch")
-    subparsers.add_parser("show")
+    # `show` is what runs when no action is given on the command line.
+    parser.set_defaults(command="show")
 
     args = parser.parse_args(argv)
     git = Git(args.path)
@@ -1013,7 +1018,7 @@ def main(argv: list[str] | None = None) -> None:
             print(project.current_branch.gap_from_remote_main())
         elif args.command == "show":
             print(show(project))
-        else:  # unreachable: required=True makes argparse exit on missing/unknown command
+        else:  # unreachable: argparse exits on unknown command, `show` is the default
             parser.error(f"unknown command: {args.command}")
     except Exception as e:
         if os.getenv("DEBUG"):
