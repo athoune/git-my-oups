@@ -3,4 +3,9 @@ DRAFT.md
 GitNexus/
 TODO.md
 session-ses_*.md
+
+# Coverage artifacts (see `make coverage`)
+.coverage
+.coverage.*
+htmlcov/
 .venv-pytest

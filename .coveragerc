@@ -1,0 +1,10 @@
+[run]
+# git-oups runs as a subprocess. Enable parallel data files so the traces
+# collected by the test subprocesses can be merged by `coverage combine`.
+parallel = true
+
+# Measure the git-oups script only. oups.py is a symlink to git-oups, so both
+# names are listed (coverage resolves the link to the real file).
+include =
+    */oups.py
+    */git-oups
