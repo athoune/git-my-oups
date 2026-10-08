@@ -55,7 +55,11 @@ CommitDate: Tue Aug 18 04:39:45 2026 +0100
     )
 
 
-def test_forge():
+def test_forge(monkeypatch):
+    # Gitlab.guess_forge() probes the remote URL over HTTP to tell apart
+    # self-hosted GitLab instances. Stub the probe so the test stays offline
+    # and deterministic: both remotes below are identified by their URL alone.
+    monkeypatch.setattr("oups.yolo_url_open", lambda url: {})
     project = Project(Git(os.getcwd()))
     lines = """
 gitlab  git@gitlab.com:athoune/git-my-oups.git (fetch)
