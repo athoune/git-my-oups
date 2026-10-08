@@ -1024,10 +1024,10 @@ def main(argv: list[str] | None = None) -> None:
     parser.set_defaults(command="show")
 
     args = parser.parse_args(argv)
-    git = Git(args.path)
-    project = Project(git)
 
     try:
+        git = Git(args.path)
+        project = Project(git)
         if args.command == "remote-main":
             if not project.remote_main():
                 sys.exit(1)
@@ -1044,9 +1044,13 @@ def main(argv: list[str] | None = None) -> None:
         if os.getenv("DEBUG"):
             print(call_stacks)
         raise
-    if DUMP:
-        with open(f"__oups-{os.getpid()}-dump.json", "w") as f:
-            json.dump([cs.__dict__ for cs in call_stacks], f, default=str)
+    finally:
+        # Write the trace even when the run fails: a conflict exits through
+        # sys.exit(1) and a crash through an exception, which are precisely
+        # the runs worth inspecting.
+        if DUMP:
+            with open(f"__oups-{os.getpid()}-dump.json", "w") as f:
+                json.dump([cs.__dict__ for cs in call_stacks], f, default=str)
 
 
 if __name__ == "__main__":
