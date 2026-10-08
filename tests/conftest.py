@@ -75,16 +75,24 @@ def pusher(tmp_path: Path, repo: Path) -> Path:
     return clone
 
 
-def run_oups(*args: str, repo_path: Path | None = None, cwd: Path | None = None):
+def run_oups(
+    *args: str,
+    repo_path: Path | None = None,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+):
     """Run oups.py as a subprocess.
 
     With repo_path, the --path option is used. With cwd, oups.py is run from
     inside the repository (exercising the default current-directory behavior).
+    Extra environment variables can be passed with env.
     """
     cmd = [sys.executable, str(OUPS)]
     if repo_path is not None:
         cmd += ["--path", str(repo_path)]
     cmd += list(args)
-    env = os.environ.copy()
-    env["LC_ALL"] = "C"
-    return subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True)
+    full_env = os.environ.copy()
+    full_env["LC_ALL"] = "C"
+    if env:
+        full_env.update(env)
+    return subprocess.run(cmd, cwd=cwd, env=full_env, capture_output=True, text=True)
