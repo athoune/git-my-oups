@@ -6,6 +6,7 @@ import io
 import json
 import os
 import re
+import signal
 import sys
 import urllib.parse
 import urllib.request
@@ -35,13 +36,15 @@ class CliCallStack:
         self.stderr = info.stderr.decode()
         self.returncode = info.returncode
         frame = inspect.getouterframes(inspect.currentframe())[2]
-        self.caller = dict(
-            function=frame.function, lineno=frame.lineno, filename=frame.filename
-        )
+        self.caller = {
+            "function": frame.function,
+            "lineno": frame.lineno,
+            "filename": frame.filename,
+        }
 
     def __repr__(self):
         return f"""<CliCallStack
-    command= {str(self.command)}
+    command= {self.command!s}
     stdout= {self.stdout}
     stderr= {self.stderr}
     returncode= {self.returncode}
@@ -70,8 +73,6 @@ class RemoteBranchException(Exception):
 
 class UnknownRefException(Exception):
     "The ref doesn't exist in any branch"
-
-    pass
 
 
 class Git:
@@ -351,6 +352,10 @@ class Forge(ABC):
     def pull_request(self, branch_name: str) -> "PullRequest | None":
         pass
 
+    @abstractmethod
+    def __call__(self, *args) -> CompletedProcess[bytes]:
+        pass
+
 
 class Comment(ABC):
     author: str
@@ -533,11 +538,26 @@ STDERR:
         return ok
 
 
-class GitlabError(CalledProcessError):
+class CliError(CalledProcessError):
+    def __str__(self):
+        if self.returncode and self.returncode < 0:
+            try:
+                return f"Command '{self.cmd}' died with {signal.Signals(-self.returncode)}."
+            except ValueError:
+                return (
+                    f"Command '{self.cmd}' died with unknown signal {-self.returncode}."
+                )
+        else:
+            return (
+                f"Command '{self.cmd}' returned non-zero exit status {self.returncode}."
+            )
+
+
+class GitlabError(CliError):
     pass
 
 
-class GithubError(CalledProcessError):
+class GithubError(CliError):
     pass
 
 
@@ -1020,14 +1040,13 @@ def main(argv: list[str] | None = None) -> None:
             print(show(project))
         else:  # unreachable: argparse exits on unknown command, `show` is the default
             parser.error(f"unknown command: {args.command}")
-    except Exception as e:
+    except Exception:
         if os.getenv("DEBUG"):
             print(call_stacks)
         raise
     if DUMP:
-        f = open(f"__oups-{os.getpid()}-dump.json", "w")
-        json.dump([cs.__dict__ for cs in call_stacks], f, default=str)
-        f.close()
+        with open(f"__oups-{os.getpid()}-dump.json", "w") as f:
+            json.dump([cs.__dict__ for cs in call_stacks], f, default=str)
 
 
 if __name__ == "__main__":
