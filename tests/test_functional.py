@@ -12,6 +12,8 @@ details are surfaced in a "STDOUT:" / "STDERR:" block (merge-tree
 --write-tree prints its conflict info on stdout, pull --rebase on stderr).
 """
 
+import json
+
 import pytest
 
 from conftest import git, run_oups, write_and_commit
@@ -138,3 +140,48 @@ def test_stale_local_main_conflicts_with_origin_main(repo, pusher):
     # merge-tree --write-tree prints its conflict info on stdout (stderr is empty)
     assert "STDOUT:" in proc.stdout
     assert "CONFLICT" in proc.stdout
+
+
+def test_crash_dump_records_cli_calls(repo):
+    """With DUMP set, a successful run writes a JSON trace of the CLI calls."""
+    proc = run_oups("remote-main", cwd=repo, env={"DUMP": "1"})
+
+    assert proc.returncode == 0
+    dumps = list(repo.glob("__oups-*-dump.json"))
+    assert len(dumps) == 1, "exactly one dump file must be written"
+
+    trace = json.loads(dumps[0].read_text())
+    assert trace, "the trace must contain at least one CLI call"
+
+    # Every entry captures the command, its output, its exit code and caller.
+    entry = trace[0]
+    assert set(entry) == {"command", "stdout", "stderr", "returncode", "caller"}
+    assert entry["command"][0] == "git"
+    assert set(entry["caller"]) == {"function", "lineno", "filename"}
+
+
+def test_crash_dump_survives_a_failing_run(repo, pusher):
+    """A run that exits 1 (conflict) must still leave a trace on disk."""
+    # Local work on a feature branch that conflicts with a remote push.
+    git(repo, "checkout", "-q", "-b", "feature")
+    write_and_commit(repo, "feature change", {"a.txt": "feature\n"})
+    git(repo, "push", "-q", "-u", "origin", "feature")
+    write_and_commit(repo, "local change", {"a.txt": "local\n"})
+    git(repo, "checkout", "-q", "main")
+
+    # Someone else pushes conflicting work to the same branch on the remote.
+    git(pusher, "fetch", "-q")
+    git(pusher, "checkout", "-q", "-b", "feature", "origin/feature")
+    write_and_commit(pusher, "pushed change", {"a.txt": "pushed\n"})
+    git(pusher, "push", "-q", "origin", "feature")
+
+    proc = run_oups("remote-main", cwd=repo, env={"DUMP": "1"})
+
+    assert proc.returncode == 1
+    dumps = list(repo.glob("__oups-*-dump.json"))
+    assert len(dumps) == 1, "the trace must be written even when the run fails"
+
+    trace = json.loads(dumps[0].read_text())
+    assert any(entry["returncode"] != 0 for entry in trace), (
+        "the failing CLI call must be part of the trace"
+    )
