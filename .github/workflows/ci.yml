@@ -33,9 +33,5 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      # git-oups has no runtime dependency; pytest is only needed to run the suite.
-      - name: Install pytest
-        run: python -m pip install --upgrade pip pytest
-
       - name: Run the test suite
-        run: python -m pytest -q
+        run: make test
